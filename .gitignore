@@ -1,0 +1,38 @@
+# env
+.env
+.env.local
+.env.*.local
+
+# deps
+node_modules/
+*/node_modules/
+.pnp
+.pnp.*
+
+# next.js
+.next/
+out/
+build/
+dist/
+
+# firebase
+.firebase/
+firebase-debug.log
+firestore-debug.log
+ui-debug.log
+
+# logs
+*.log
+npm-debug.log*
+
+# editor
+.vscode/
+.idea/
+.DS_Store
+
+# demo
+demo/raw/
+demo/*.mp4
+demo/*.mov
+*.mp4
+*.mov

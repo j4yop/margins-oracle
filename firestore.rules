@@ -1,0 +1,11 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // Hackathon scope: read-only public for now
+    match /products/{gtin} { allow read: if true; allow write: if false; }
+    match /prices/{city}/{gtin} { allow read: if true; allow write: if false; }
+    match /transactions/{tx} { allow read, write: if true; }   // open in dev
+    match /merchants/{m}/ledger/{tx} { allow read, write: if true; }
+    match /merchants/{m}/embeddings/{e} { allow read, write: if true; }
+  }
+}
