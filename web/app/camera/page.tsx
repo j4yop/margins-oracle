@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { DEMO_PRODUCTS } from '@/lib/demo-products';
+import SiteNav from '@/components/SiteNav';
+import SiteFooter from '@/components/SiteFooter';
 
 type FairPrice = {
   product: { gtin: string; name: string; brand?: string; mrp?: number };
@@ -52,10 +54,8 @@ export default function CameraPage() {
           videoRef.current.play();
         }
 
-        // @ts-expect-error - experimental Safari API
         if ('BarcodeDetector' in window) {
-          // @ts-expect-error
-          const detector = new window.BarcodeDetector({ formats: ['ean_13', 'ean_8', 'code_128'] });
+          const detector = new (window as any).BarcodeDetector({ formats: ['ean_13', 'ean_8', 'code_128'] });
           const tick = async () => {
             if (cancelled || !videoRef.current) return;
             try {
@@ -137,14 +137,14 @@ export default function CameraPage() {
 
   return (
     <main className="min-h-screen bg-bone text-ink">
+      <SiteNav />
       <header className="px-5 pt-6 pb-4 max-w-3xl mx-auto flex items-baseline justify-between border-b-2 border-ink">
         <div>
-          <h1 className="font-display text-3xl">Camera + Fair Price</h1>
+          <h1 className="font-display text-3xl tracking-tight">Camera + Fair Price</h1>
           <div className="font-mono text-xs text-ghost mt-1">
             <span className="live-dot mr-1.5"></span>LIVE · Gemini 3.7 flash · 5 sources · Beckn
           </div>
         </div>
-        <Link href="/" className="font-mono text-xs underline">← home</Link>
       </header>
 
       {/* CAMERA */}
@@ -311,9 +311,7 @@ export default function CameraPage() {
         </section>
       )}
 
-      <footer className="px-5 py-6 max-w-3xl mx-auto border-t-2 border-ink font-mono text-xs text-ghost">
-        GS1 + Agmarknet + ONDC Beckn + Gemini 3.7 flash · <Link href="/ledger" className="underline">view ledger</Link>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

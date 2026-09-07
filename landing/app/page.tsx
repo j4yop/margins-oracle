@@ -100,11 +100,11 @@ export default function Home() {
         <div className="max-w-5xl mx-auto px-5 py-20">
           <div className="font-mono text-xs uppercase tracking-widest text-ghost mb-6">Under the hood</div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-4 font-mono text-xs">
-            {[
+            {([
               ['AI', ['Gemini 3.7 flash (reasoning + JSON schema)', 'Gemini 2.5 flash preview TTS (voice)', 'Gemini Embedding 2 (ledger)', 'Gemini 3.1 flash lite (routing)']],
               ['Commerce', ['ONDC Beckn JSON-LD (4-step round-trip)', 'GS1 India GTIN lookup', 'Agmarknet mandi prices', 'Bhashini (planned)']],
               ['Infra', ['Next.js 14 (App Router)', 'Firebase Firestore (1 GB free)', 'MCP over HTTP (JSON-RPC 2.0)', 'Free tier throughout · $0/mo']],
-            ].map(([cat, items]) => (
+            ] as [string, string[]][]).map(([cat, items]) => (
               <div key={cat} className="border-2 border-ink p-4 bg-paper">
                 <div className="font-display text-base mb-2">{cat}</div>
                 <ul className="space-y-1 text-ink/70">

@@ -1,9 +1,4 @@
-# env
-.env
-.env.local
-.env.*.local
-
-# deps
+# dependencies
 node_modules/
 */node_modules/
 .pnp
@@ -15,24 +10,52 @@ out/
 build/
 dist/
 
+# env / secrets — never commit
+.env
+.env.local
+.env.*.local
+.env.development
+.env.production
+
 # firebase
 .firebase/
 firebase-debug.log
 firestore-debug.log
 ui-debug.log
+*-firebase-adminsdk-*.json
+*-adminsdk.json
+serviceAccount.json
 
-# logs
-*.log
-npm-debug.log*
+# python (api/)
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+.venv/
+venv/
+env/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
 
 # editor
 .vscode/
 .idea/
+*.swp
+*.swo
 .DS_Store
 
-# demo
-demo/raw/
-demo/*.mp4
-demo/*.mov
-*.mp4
-*.mov
+# logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# misc
+*.tsbuildinfo
+.vercel
+coverage/
+.turbo/

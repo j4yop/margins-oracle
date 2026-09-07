@@ -3,6 +3,8 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { synthesizeSpeech } from '@/lib/tts';
+import SiteNav from '@/components/SiteNav';
+import SiteFooter from '@/components/SiteFooter';
 
 type Line = { role: 'supplier' | 'shopkeeper' | 'oracle'; text: string; lang: 'ta' | 'hi' | 'en' };
 type Script = { median?: number; lang?: string; lines: Line[]; cached?: boolean; generated_by?: string };
@@ -113,14 +115,15 @@ export default function HagglePage() {
 
   return (
     <main className="min-h-screen bg-bone text-ink flex flex-col">
-      <header className="px-5 pt-6 pb-4 border-b-2 border-ink flex items-baseline justify-between">
-        <div>
-          <h1 className="font-display text-3xl">Haggling</h1>
+      <SiteNav />
+      <header className="px-5 pt-5 pb-4 border-b-2 border-ink">
+        <div className="max-w-3xl mx-auto">
+          <h1 className="font-display text-3xl tracking-tight">Haggling</h1>
           <div className="font-mono text-xs text-ghost mt-1">
+            <span className="live-dot mr-1.5"></span>
             {loading ? 'Generating script with Gemini…' : script?.cached ? 'cached · Gemini-generated' : `fresh · ${script?.generated_by ?? 'gemini'}`}
           </div>
         </div>
-        <Link href="/" className="font-mono text-xs underline">← home</Link>
       </header>
 
       {error && (
@@ -141,11 +144,11 @@ export default function HagglePage() {
         {lines.map((t, i) => (
           <div
             key={i}
-            className={`max-w-[80%] p-4 border-2 border-ink ${
+            className={`pop-in max-w-[80%] p-4 border-2 border-ink ${
               t.role === 'oracle'
-                ? 'ml-auto bg-ink text-bone'
+                ? 'ml-auto bg-ink text-bone shadow-brutal-signal'
                 : t.role === 'supplier'
-                ? 'bg-paper'
+                ? 'bg-paper shadow-brutal-sm'
                 : 'mr-auto bg-signal/10'
             }`}
           >
@@ -182,6 +185,8 @@ export default function HagglePage() {
           </button>
         )}
       </div>
+
+      <SiteFooter />
     </main>
   );
 }

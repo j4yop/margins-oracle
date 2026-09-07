@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { logTransaction, recentTransactions, db } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
+import SiteNav from '@/components/SiteNav';
+import SiteFooter from '@/components/SiteFooter';
 
 type Tx = {
   id?: string;
@@ -89,14 +91,15 @@ export default function LedgerPage() {
 
   return (
     <main className="min-h-screen bg-bone text-ink">
-      <header className="px-5 py-6 border-b-2 border-ink flex items-baseline justify-between">
-        <div>
-          <h1 className="font-display text-3xl">Margins Ledger</h1>
-          <p className="mt-1 font-mono text-xs text-ghost">
+      <SiteNav />
+      <header className="px-5 pt-5 pb-4 border-b-2 border-ink">
+        <div className="max-w-4xl mx-auto">
+          <h1 className="font-display text-3xl tracking-tight">Margins Ledger</h1>
+          <div className="font-mono text-xs text-ghost mt-1">
+            <span className="live-dot mr-1.5"></span>
             merchant <span className="text-ink">{merchantId}</span> · every verified fair-price transaction
-          </p>
+          </div>
         </div>
-        <Link href="/" className="font-mono text-xs underline">← home</Link>
       </header>
 
       <section className="px-5 py-6 max-w-4xl mx-auto">
@@ -142,42 +145,42 @@ export default function LedgerPage() {
       </section>
 
       <section className="px-5 py-6 max-w-4xl mx-auto border-t-2 border-ink">
-        <table className="w-full text-sm">
-          <thead className="text-left text-xs font-mono uppercase tracking-widest text-ghost border-b-2 border-ink">
-            <tr>
-              <th className="py-2">product</th>
-              <th className="py-2 text-right">supplier</th>
-              <th className="py-2 text-right">fair</th>
-              <th className="py-2 text-right">saved</th>
-              <th className="py-2">verdict</th>
-            </tr>
-          </thead>
-          <tbody>
-            {rows.length === 0 && (
-              <tr><td colSpan={5} className="py-8 text-center text-ghost font-mono text-xs">no transactions yet — click "seed"</td></tr>
-            )}
-            {rows.map((r) => (
-              <tr key={r.id} className="border-b border-ink/10">
-                <td className="py-2 pr-2">{r.product}</td>
-                <td className="py-2 text-right font-mono">₹{r.supplierPrice}</td>
-                <td className="py-2 text-right font-mono">₹{r.fairPrice}</td>
-                <td className={`py-2 text-right font-mono ${r.saved > 0 ? 'text-ok font-bold' : 'text-ghost'}`}>
-                  {r.saved > 0 ? `+₹${r.saved}` : '—'}
-                </td>
-                <td className="py-2">
-                  <span className={`text-xs font-mono px-1.5 py-0.5 border border-ink ${r.verdict === 'fair' ? 'bg-ok text-bone' : r.verdict === 'overpriced' ? 'bg-warn text-bone' : 'bg-ghost text-bone'}`}>
-                    {r.verdict}
-                  </span>
-                </td>
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm min-w-[480px]">
+            <thead className="text-left text-xs font-mono uppercase tracking-widest text-ghost border-b-2 border-ink">
+              <tr>
+                <th className="py-2">product</th>
+                <th className="py-2 text-right">supplier</th>
+                <th className="py-2 text-right">fair</th>
+                <th className="py-2 text-right">saved</th>
+                <th className="py-2">verdict</th>
               </tr>
-            ))}
-          </tbody>
-        </table>
+            </thead>
+            <tbody>
+              {rows.length === 0 && (
+                <tr><td colSpan={5} className="py-8 text-center text-ghost font-mono text-xs">no transactions yet — click "seed"</td></tr>
+              )}
+              {rows.map((r) => (
+                <tr key={r.id} className="border-b border-ink/10">
+                  <td className="py-2 pr-2">{r.product}</td>
+                  <td className="py-2 text-right font-mono">₹{r.supplierPrice}</td>
+                  <td className="py-2 text-right font-mono">₹{r.fairPrice}</td>
+                  <td className={`py-2 text-right font-mono ${r.saved > 0 ? 'text-ok font-bold' : 'text-ghost'}`}>
+                    {r.saved > 0 ? `+₹${r.saved}` : '—'}
+                  </td>
+                  <td className="py-2">
+                    <span className={`text-xs font-mono px-1.5 py-0.5 border border-ink ${r.verdict === 'fair' ? 'bg-ok text-bone' : r.verdict === 'overpriced' ? 'bg-warn text-bone' : 'bg-ghost text-bone'}`}>
+                      {r.verdict}
+                    </span>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       </section>
 
-      <footer className="px-5 py-8 max-w-4xl mx-auto border-t-2 border-ink font-mono text-xs text-ghost">
-        Voice-queryable via Gemini Live API · stored in Firestore · <Link href="/" className="underline">home</Link>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

@@ -1,7 +1,8 @@
 'use client';
 
 import { useState } from 'react';
-import Link from 'next/link';
+import SiteNav from '@/components/SiteNav';
+import SiteFooter from '@/components/SiteFooter';
 
 export default function OraclePage() {
   const [endpoint, setEndpoint] = useState(typeof window !== 'undefined' ? `${window.location.origin}/api/mcp` : 'https://margins-mcp.example.com/api/mcp');
@@ -76,17 +77,17 @@ $ curl -X POST ${endpoint} \\
 
   return (
     <main className="min-h-screen bg-bone text-ink">
-      <header className="px-5 py-6 border-b-2 border-ink flex items-baseline justify-between">
-        <div>
-          <div className="flex items-center gap-3">
-            <h1 className="font-display text-3xl">margins-mcp</h1>
+      <SiteNav />
+      <header className="px-5 py-6 border-b-2 border-ink">
+        <div className="max-w-4xl mx-auto">
+          <div className="flex items-center gap-3 flex-wrap">
+            <h1 className="font-display text-3xl tracking-tight">margins-mcp</h1>
             <span className="px-2 py-0.5 bg-signal text-bone font-mono text-[10px] uppercase tracking-widest">★ the killer beat</span>
           </div>
           <p className="mt-1 font-mono text-xs text-ghost">
             The oracle, as <em>infrastructure</em>. Any other AI agent in India can call MARGINS as a tool.
           </p>
         </div>
-        <Link href="/" className="font-mono text-xs underline">← home</Link>
       </header>
 
       <section className="px-5 py-8 max-w-4xl mx-auto">
@@ -160,10 +161,7 @@ $ curl -X POST ${endpoint} \\
         </p>
       </section>
 
-      <footer className="px-5 py-8 max-w-4xl mx-auto border-t-2 border-ink font-mono text-xs text-ghost">
-        Spec: <a href="https://modelcontextprotocol.io" className="underline">modelcontextprotocol.io</a> ·
-        Discovery: <a href="/.well-known/mcp.json" className="underline">/.well-known/mcp.json</a>
-      </footer>
+      <SiteFooter />
     </main>
   );
 }

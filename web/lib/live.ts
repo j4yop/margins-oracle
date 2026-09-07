@@ -12,7 +12,9 @@
  * Free tier: ~5 minutes per session in preview.
  */
 
-import { GoogleGenerativeAI, Modality } from '@google/generative-ai';
+import { GoogleGenerativeAI } from '@google/generative-ai';
+
+const Modality: { AUDIO: 'AUDIO'; TEXT: 'TEXT' } = { AUDIO: 'AUDIO', TEXT: 'TEXT' };
 
 export type LiveCallbacks = {
   onAudio?: (pcm: ArrayBuffer) => void;

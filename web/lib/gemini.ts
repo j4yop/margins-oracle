@@ -65,7 +65,7 @@ export function embedModel() {
  * Fair-price JSON schema used as responseSchema across all fair-price calls.
  * This is the structured contract every output must conform to.
  */
-export const FAIR_PRICE_SCHEMA = {
+export const FAIR_PRICE_SCHEMA: any = {
   type: 'object',
   properties: {
     product: {
@@ -123,7 +123,7 @@ export const FAIR_PRICE_SCHEMA = {
     },
   },
   required: ['product', 'fairPriceBand', 'verdict', 'sources', 'reasoning'],
-} as const;
+};
 
 /** Smoke-test the API key + models. Run once after setup. */
 export async function smokeTest(): Promise<{
