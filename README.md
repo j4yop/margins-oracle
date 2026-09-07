@@ -4,7 +4,6 @@
 
 **Hackathon:** Google Gemini hackathon — India cohort
 **Track:** Our Markets — Rethink the future of markets
-**Submission brief:** see [`/Users/jaygopal/Desktop/MARGINS-hackathon-brief.md`](./docs/architecture/margins-hackathon-brief.md) (91/100 score)
 
 ---
 
