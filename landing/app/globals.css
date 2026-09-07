@@ -3,8 +3,122 @@
 @tailwind utilities;
 
 :root {
-  font-family: 'Inter', system-ui, -apple-system, sans-serif;
   -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  -webkit-tap-highlight-color: transparent;
+  --grid-line: rgba(10, 10, 10, 0.06);
 }
-html, body { background: #f5f5f0; color: #0a0a0a; }
+
+html { scroll-behavior: smooth; }
+
+html, body {
+  background: #f5f5f0;
+  color: #0a0a0a;
+}
+
 * { border-radius: 0 !important; }
+
+::selection { background: #ff5b1f; color: #f5f5f0; }
+
+:focus-visible {
+  outline: 3px solid #ff5b1f;
+  outline-offset: 2px;
+}
+
+input[type='file'] { font-size: 16px; }
+input, select, textarea { font-size: 16px; }
+video { -webkit-playsinline: true; playsinline: true; }
+
+.paper {
+  background-color: #faf9f5;
+  background-image:
+    radial-gradient(circle at 1px 1px, rgba(10, 10, 10, 0.05) 1px, transparent 0);
+  background-size: 18px 18px;
+}
+
+/* Slab — the signature card. No rounded corners. Hard offset shadow. */
+.slab {
+  border: 2px solid #0a0a0a;
+  background: #faf9f5;
+  box-shadow: 6px 6px 0 0 #0a0a0a;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.slab-sm { box-shadow: 3px 3px 0 0 #0a0a0a; }
+.slab-signal { box-shadow: 6px 6px 0 0 #ff5b1f; }
+
+@media (hover: hover) {
+  .slab-interactive:hover {
+    transform: translate(-2px, -2px);
+    box-shadow: 8px 8px 0 0 #ff5b1f;
+  }
+}
+@media (hover: none) {
+  .slab-interactive:active {
+    transform: translate(2px, 2px);
+    box-shadow: 2px 2px 0 0 #0a0a0a;
+  }
+}
+
+.no-scrollbar::-webkit-scrollbar { display: none; }
+.no-scrollbar { -ms-overflow-style: none; scrollbar-width: none; }
+
+.live-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  background: #ff5b1f;
+  border-radius: 50%;
+  animation: blink 1.2s ease-in-out infinite;
+}
+
+@keyframes blink {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.3; }
+}
+
+/* Blueprint grid background — light, used as a section accent */
+.bg-blueprint {
+  background-color: #faf9f5;
+  background-image:
+    linear-gradient(to right, var(--grid-line) 1px, transparent 1px),
+    linear-gradient(to bottom, var(--grid-line) 1px, transparent 1px);
+  background-size: 32px 32px;
+}
+
+/* Halftone overlay — used sparingly for hero accent */
+.halftone {
+  background-image: radial-gradient(circle, #0a0a0a 1px, transparent 1.5px);
+  background-size: 6px 6px;
+  -webkit-mask-image: linear-gradient(135deg, #000 25%, transparent 75%);
+  mask-image: linear-gradient(135deg, #000 25%, transparent 75%);
+}
+
+/* Section "spec strip" — used at the top of every section */
+.spec-strip {
+  font-family: var(--font-jetbrains-mono), ui-monospace, monospace;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: #0a0a0a;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  border: 2px solid #0a0a0a;
+  background: #f5f5f0;
+}
+.spec-strip::before {
+  content: '';
+  width: 8px; height: 8px;
+  background: #ff5b1f;
+  display: inline-block;
+}
+
+/* Crosshair marker used in spec strips */
+.crosshair::before,
+.crosshair::after {
+  content: '+';
+  font-family: var(--font-jetbrains-mono), monospace;
+  color: #ff5b1f;
+  font-weight: 700;
+}
