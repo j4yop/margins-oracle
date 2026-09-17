@@ -70,7 +70,7 @@ $ curl -X POST ${endpoint} \\
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900 pb-20">
+    <main className="min-h-screen bg-slate-50 text-slate-900 pb-36">
       <SiteNav />
 
       <div className="max-w-md sm:max-w-xl mx-auto px-4 pt-6 pb-2 space-y-4">

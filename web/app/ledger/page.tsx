@@ -90,7 +90,7 @@ export default function LedgerPage() {
   const overPriceCount = rows.filter((r) => r.verdict === 'overpriced').length;
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900 pb-20">
+    <main className="min-h-screen bg-slate-50 text-slate-900 pb-36">
       <SiteNav />
 
       {/* HEADER */}

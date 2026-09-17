@@ -31,12 +31,22 @@ type InvoiceAudit = {
     verdict: 'fair' | 'overpriced' | 'underpriced';
     note?: string;
   }[];
+  schemes?: {
+    brand: string;
+    scheme: string;
+    status: string;
+    impact: string;
+    withheldValue: number;
+  }[];
   summary: {
     totalBilled: number;
     totalFair: number;
     totalOvercharged: number;
+    totalSchemeWithheld?: number;
+    totalRecoverable?: number;
     flaggedItemsCount: number;
   };
+  whatsAppDisputeNotice?: string;
   actionableAdvice: string;
   analyzed_by?: string;
 };
@@ -197,7 +207,7 @@ export default function CameraPage() {
   }
 
   return (
-    <main className="min-h-screen bg-slate-50 text-slate-900 pb-20">
+    <main className="min-h-screen bg-slate-50 text-slate-900 pb-36">
       <SiteNav />
 
       {/* MOBILE APP HEADER & SEGMENTED TABS */}
@@ -513,6 +523,26 @@ export default function CameraPage() {
                 </p>
               </div>
 
+              {/* UNAPPLIED SCHEMES CARD */}
+              {invoiceResult.schemes && invoiceResult.schemes.length > 0 && (
+                <div className="p-4 rounded-2xl bg-amber-50/90 border border-amber-200/90 space-y-2 shadow-sm">
+                  <div className="flex items-center justify-between text-[11px] font-mono font-bold uppercase tracking-wider text-amber-900">
+                    <span className="flex items-center gap-1.5">
+                      <span>🎁 Missing Brand Freebies / Schemes</span>
+                    </span>
+                    <span className="px-2 py-0.5 rounded-md bg-amber-100 text-amber-900 border border-amber-300 font-bold">
+                      ₹{invoiceResult.summary.totalSchemeWithheld || 0} Withheld
+                    </span>
+                  </div>
+                  {invoiceResult.schemes.map((s, i) => (
+                    <div key={i} className="p-2.5 rounded-xl bg-white border border-amber-100 text-xs">
+                      <div className="font-semibold text-slate-900">{s.brand}: {s.scheme}</div>
+                      <div className="text-[11px] text-amber-800 mt-0.5">{s.impact}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+
               {/* LINE ITEMS LIST */}
               <div className="p-4 rounded-3xl bg-white border border-slate-200/80 shadow-sm space-y-3">
                 <div className="flex items-center justify-between text-xs font-mono text-slate-400 pb-2 border-b border-slate-100">
@@ -556,12 +586,31 @@ export default function CameraPage() {
                   ))}
                 </div>
 
-                <div className="pt-2">
+                {/* 1-TAP ACTION BUTTONS */}
+                <div className="space-y-2 pt-2">
+                  {invoiceResult.whatsAppDisputeNotice && (
+                    <a
+                      href={`https://wa.me/?text=${encodeURIComponent(invoiceResult.whatsAppDisputeNotice)}`}
+                      target="_blank"
+                      rel="noreferrer"
+                      className="flex items-center justify-center gap-2 w-full py-3.5 px-4 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-[0.99] text-white text-center font-bold text-xs shadow-md shadow-emerald-600/20 transition"
+                    >
+                      <span>📱 Send Dispute Notice on WhatsApp</span>
+                    </a>
+                  )}
+
+                  <a
+                    href={`upi://pay?pa=store@upi&pn=${encodeURIComponent(invoiceResult.distributor?.name || 'Distributor')}&am=${invoiceResult.summary.totalFair}&cu=INR&tn=Invoice_${encodeURIComponent(invoiceResult.distributor?.invoiceNo || 'Memo')}_Settlement`}
+                    className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 active:scale-[0.99] text-white text-center font-bold text-xs shadow-md shadow-orange-500/20 transition"
+                  >
+                    <span>💳 Pay Fair Amount via UPI (₹{invoiceResult.summary.totalFair})</span>
+                  </a>
+
                   <Link
                     href="/haggle"
-                    className="block w-full py-3 rounded-xl bg-slate-900 text-white text-center font-semibold text-xs shadow-md hover:bg-slate-800 transition"
+                    className="block w-full py-2.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-center font-semibold text-xs transition"
                   >
-                    Dispute Billed Rates in Voice Haggle &rarr;
+                    Open Voice Haggle Co-Pilot &rarr;
                   </Link>
                 </div>
               </div>
