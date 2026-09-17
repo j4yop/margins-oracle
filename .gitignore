@@ -57,5 +57,7 @@ yarn-error.log*
 # misc
 *.tsbuildinfo
 .vercel
-coverage/
-.turbo/
+# agent skills cache
+.agents/
+.codex/
+skills-lock.json

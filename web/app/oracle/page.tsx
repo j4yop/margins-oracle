@@ -5,7 +5,9 @@ import SiteNav from '@/components/SiteNav';
 import SiteFooter from '@/components/SiteFooter';
 
 export default function OraclePage() {
-  const [endpoint, setEndpoint] = useState(typeof window !== 'undefined' ? `${window.location.origin}/api/mcp` : 'https://margins-mcp.example.com/api/mcp');
+  const [endpoint, setEndpoint] = useState(
+    typeof window !== 'undefined' ? `${window.location.origin}/api/mcp` : 'https://margins-mcp.example.com/api/mcp'
+  );
   const [copied, setCopied] = useState(false);
   const [demoResult, setDemoResult] = useState<any>(null);
   const [demoBusy, setDemoBusy] = useState(false);
@@ -21,10 +23,10 @@ export default function OraclePage() {
   }
 }`;
 
-  const exampleCall = `# Discover the oracle
+  const exampleCall = `# Discover the oracle manifest
 $ curl ${endpoint.replace('/api/mcp', '')}/.well-known/mcp.json
 
-# Call it from any agent (raw JSON-RPC)
+# Call it from any external AI agent
 $ curl -X POST ${endpoint} \\
     -H "Content-Type: application/json" \\
     -d '{
@@ -32,18 +34,10 @@ $ curl -X POST ${endpoint} \\
       "method": "tools/call",
       "params": {
         "name": "fair_price_band",
-        "arguments": {
-          "gtin": "8901058851649",
-          "city": "Madurai",
-          "quantity": 1
-        }
+        "arguments": { "gtin": "8901058851649", "city": "Madurai" }
       },
       "id": 1
-    }'
-
-# → { "band": { "low": 248, "median": 252, "high": 258 },
-#      "verdict": "fair",
-#      "sources": [...] }`;
+    }'`;
 
   async function copy(text: string) {
     try {
@@ -76,90 +70,126 @@ $ curl -X POST ${endpoint} \\
   }
 
   return (
-    <main className="min-h-screen bg-bone text-ink">
+    <main className="min-h-screen bg-slate-50 text-slate-900 pb-20">
       <SiteNav />
-      <header className="px-5 py-6 border-b-2 border-ink">
-        <div className="max-w-4xl mx-auto">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="font-display text-3xl tracking-tight">margins-mcp</h1>
-            <span className="px-2 py-0.5 bg-signal text-bone font-mono text-[10px] uppercase tracking-widest">★ the killer beat</span>
+
+      <div className="max-w-md sm:max-w-xl mx-auto px-4 pt-6 pb-2 space-y-4">
+        {/* HEADER */}
+        <div>
+          <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-indigo-50 border border-indigo-200 text-indigo-700 text-xs font-mono font-semibold mb-2">
+            <span>⚡ Model Context Protocol (MCP)</span>
           </div>
-          <p className="mt-1 font-mono text-xs text-ghost">
-            The oracle, as <em>infrastructure</em>. Any other AI agent in India can call MARGINS as a tool.
+          <h1 className="font-display font-bold text-2xl sm:text-3xl text-slate-900">
+            margins-mcp Server
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-500 mt-1 leading-relaxed">
+            The oracle as <em>infrastructure</em>. Any AI agent in India can call MARGINS as a tool via JSON-RPC 2.0.
           </p>
         </div>
-      </header>
 
-      <section className="px-5 py-8 max-w-4xl mx-auto">
-        <div className="slab p-6">
-          <div className="font-mono text-xs uppercase tracking-widest text-ghost">endpoint</div>
-          <div className="mt-2 flex gap-2">
+        {/* ENDPOINT CARD */}
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm space-y-2">
+          <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
+            Public Tool Endpoint
+          </span>
+          <div className="flex gap-2">
             <input
               value={endpoint}
               onChange={(e) => setEndpoint(e.target.value)}
-              className="flex-1 px-3 py-2 border-2 border-ink font-mono text-sm bg-paper"
+              className="flex-1 px-3 py-2 rounded-xl border border-slate-200 font-mono text-xs bg-slate-50 focus:bg-white focus:ring-2 focus:ring-indigo-500 focus:outline-none"
             />
             <button
               onClick={() => copy(endpoint)}
-              className="px-3 py-2 border-2 border-ink font-mono text-xs"
+              className="px-3.5 py-2 rounded-xl bg-slate-900 text-white font-mono text-xs hover:bg-slate-800 transition"
             >
-              {copied ? '✓' : 'copy'}
+              {copied ? '✓ Copied' : 'Copy'}
             </button>
           </div>
         </div>
-      </section>
 
-      <section className="px-5 pb-8 max-w-4xl mx-auto">
-        <div className="font-mono text-xs uppercase tracking-widest text-ghost mb-2">configure in your agent</div>
-        <pre className="bg-ink text-bone p-5 font-mono text-xs overflow-x-auto whitespace-pre border-2 border-ink">
+        {/* CLAUDE DESKTOP CONFIG */}
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm space-y-2">
+          <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider block">
+            Wire into Claude Desktop / External Agent
+          </span>
+          <pre className="p-3 rounded-xl bg-slate-900 text-slate-100 font-mono text-xs overflow-x-auto">
 {configSnippet}
-        </pre>
-      </section>
-
-      <section className="px-5 pb-8 max-w-4xl mx-auto">
-        <div className="font-mono text-xs uppercase tracking-widest text-ghost mb-2">call it (live demo)</div>
-        <pre className="bg-ink text-bone p-5 font-mono text-xs overflow-x-auto whitespace-pre border-2 border-ink">
-{exampleCall}
-        </pre>
-        <button
-          onClick={tryIt}
-          disabled={demoBusy}
-          className="mt-3 px-4 py-2 bg-signal text-bone font-display border-2 border-ink shadow-brutal-sm disabled:opacity-40"
-        >
-          {demoBusy ? 'Calling…' : '▶ run live call to /api/mcp'}
-        </button>
-        {demoResult && (
-          <pre className="mt-3 bg-bone border-2 border-ink p-4 font-mono text-xs overflow-x-auto">
-            {JSON.stringify(demoResult, null, 2).slice(0, 1500)}
-            {JSON.stringify(demoResult).length > 1500 ? '\n… (truncated)' : ''}
           </pre>
-        )}
-      </section>
+        </div>
 
-      <section className="px-5 py-10 max-w-4xl mx-auto border-t-2 border-ink">
-        <h2 className="font-display text-2xl">What is this?</h2>
-        <p className="mt-3 leading-relaxed">
-          <strong>Model Context Protocol (MCP)</strong> is the open standard for tool-calling between AI agents.
-          MARGINS exposes its fairness-oracle as an MCP server. The three tools it ships:
-        </p>
-        <div className="mt-4 grid grid-cols-1 md:grid-cols-3 gap-3 font-mono text-xs">
-          <div className="border-2 border-ink p-3 bg-paper">
-            <div className="font-display text-base">fair_price_band</div>
-            <div className="mt-1 text-ink/70">Compute a fair-price band for any Indian product by GTIN + city. Returns verdict + sources.</div>
+        {/* LIVE TESTER */}
+        <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-[10px] font-mono text-slate-400 uppercase tracking-wider">
+              Interactive Test Harness
+            </span>
+            <span className="text-[10px] font-mono text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-full font-bold">
+              Amul Butter 500g
+            </span>
           </div>
-          <div className="border-2 border-ink p-3 bg-paper">
-            <div className="font-display text-base">place_beckn_order</div>
-            <div className="mt-1 text-ink/70">Order the product through ONDC Beckn at the cheapest fair price. Real round-trip.</div>
-          </div>
-          <div className="border-2 border-ink p-3 bg-paper">
-            <div className="font-display text-base">query_margins_ledger</div>
-            <div className="mt-1 text-ink/70">Query a merchant's transaction history. "What did I sell last Tuesday?" answered in plain language.</div>
+
+          <pre className="p-3 rounded-xl bg-slate-900 text-slate-100 font-mono text-xs overflow-x-auto">
+{exampleCall}
+          </pre>
+
+          <button
+            onClick={tryIt}
+            disabled={demoBusy}
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-indigo-600 to-violet-600 text-white font-semibold text-xs shadow-md shadow-indigo-500/20 hover:from-indigo-500 hover:to-violet-500 disabled:opacity-50 transition flex items-center justify-center gap-2"
+          >
+            {demoBusy ? (
+              <>
+                <span className="live-dot" />
+                <span>Executing JSON-RPC Call…</span>
+              </>
+            ) : (
+              '▶ Run Live JSON-RPC Call to /api/mcp'
+            )}
+          </button>
+
+          {demoResult && (
+            <pre className="p-3.5 rounded-xl bg-slate-950 text-emerald-400 font-mono text-xs overflow-x-auto border border-slate-800">
+              {JSON.stringify(demoResult, null, 2)}
+            </pre>
+          )}
+        </div>
+
+        {/* THREE EXPOSED TOOLS */}
+        <div className="space-y-2 pt-2">
+          <span className="text-xs font-mono uppercase tracking-wider text-slate-400">
+            Callable Tools Registered
+          </span>
+          <div className="space-y-2">
+            {[
+              {
+                name: 'fair_price_band',
+                desc: 'Compute fair-price band for any Indian product given GTIN + city + quantity. Backed by GS1, Agmarknet, ONDC.',
+                badge: 'Primary Oracle',
+              },
+              {
+                name: 'place_beckn_order',
+                desc: 'Place an order through the ONDC Beckn network at the verified fair price.',
+                badge: 'Commerce Action',
+              },
+              {
+                name: 'query_margins_ledger',
+                desc: 'Query a merchant history. "What did I buy last Tuesday?" answered with provenance.',
+                badge: 'Fintech Memory',
+              },
+            ].map((t) => (
+              <div key={t.name} className="p-3.5 rounded-2xl bg-white border border-slate-200/80 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-xs font-bold text-indigo-600">{t.name}</span>
+                  <span className="text-[9px] font-mono text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">
+                    {t.badge}
+                  </span>
+                </div>
+                <p className="text-xs text-slate-500 leading-relaxed">{t.desc}</p>
+              </div>
+            ))}
           </div>
         </div>
-        <p className="mt-6 text-sm leading-relaxed">
-          This is the reframe: <em>not a chatbot, not a buyer app, not a shopping assistant — infrastructure for the entire Indian commerce agent ecosystem.</em>
-        </p>
-      </section>
+      </div>
 
       <SiteFooter />
     </main>

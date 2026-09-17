@@ -9,14 +9,6 @@ import SiteFooter from '@/components/SiteFooter';
 type Line = { role: 'supplier' | 'shopkeeper' | 'oracle'; text: string; lang: 'ta' | 'hi' | 'en' };
 type Script = { median?: number; lang?: string; lines: Line[]; cached?: boolean; generated_by?: string };
 
-/**
- * Haggling scene — Phase 3 of MARGINS.
- *
- * v2: The script is generated server-side by Gemini based on the actual product
- *     fair-price band, then played back with Gemini TTS. Each line is synthesised
- *     lazily so we don't burn TTS quota on lines the user might not reach.
- *     Falls back to a static demo script if the API is unavailable.
- */
 const FALLBACK_SCRIPT: Line[] = [
   { role: 'supplier', text: 'Anna, today 500 gram Amul butter ₹285. Last week ₹280. Inflation.', lang: 'en' },
   { role: 'shopkeeper', text: 'Ayyo, ₹285? Market-ல ₹252-ku கிடைக்குது. ₹270 final-aa?', lang: 'ta' },
@@ -70,9 +62,8 @@ export default function HagglePage() {
 
   async function playTurn(i: number) {
     if (!script || i >= script.lines.length) {
-      // compute savings vs MRP
       if (script?.median) {
-        const final = Math.round(script.median * 0.97);
+        const final = Math.round(script.median * (paymentTerms === 'cash' ? 0.94 : 0.97));
         setSettled({ final, saved: 280 - final });
       }
       return;
@@ -95,17 +86,16 @@ export default function HagglePage() {
         a.onended = () => {
           setPlaying(false);
           URL.revokeObjectURL(url);
-          setTimeout(() => playTurn(i + 1), 800);
+          setTimeout(() => playTurn(i + 1), 700);
         };
         await a.play();
       } catch (e) {
         setPlaying(false);
         console.warn('[tts]', String(e));
-        setTimeout(() => playTurn(i + 1), 600);
+        setTimeout(() => playTurn(i + 1), 500);
       }
     } else {
-      // shopkeeper line — short pause as if speaking
-      setTimeout(() => playTurn(i + 1), 1800);
+      setTimeout(() => playTurn(i + 1), 1600);
     }
     setBusy(false);
   }
@@ -118,100 +108,146 @@ export default function HagglePage() {
   }
 
   return (
-    <main className="min-h-screen bg-bone text-ink flex flex-col">
+    <main className="min-h-screen bg-slate-50 text-slate-900 flex flex-col pb-36">
       <SiteNav />
-      <header className="px-5 pt-5 pb-4 border-b-2 border-ink">
-        <div className="max-w-3xl mx-auto">
-          <h1 className="font-display text-3xl tracking-tight">Haggling</h1>
-          <div className="font-mono text-xs text-ghost mt-1">
-            <span className="live-dot mr-1.5"></span>
-            {loading ? 'Generating script with Gemini…' : script?.cached ? 'cached · Gemini-generated' : `fresh · ${script?.generated_by ?? 'gemini'}`}
-          </div>
-        </div>
-      </header>
 
-      <div className="bg-paper border-b-2 border-ink px-5 py-3">
-        <div className="max-w-3xl mx-auto flex items-center justify-between gap-3 flex-wrap">
-          <span className="font-mono text-xs uppercase tracking-widest text-ghost">Payment Leverage:</span>
-          <div className="flex gap-2">
-            {[
-              { id: 'cash', label: 'Spot Cash (UPI)' },
-              { id: '15_days', label: '15-Day Udhaar' },
-              { id: '30_days', label: '30-Day Credit' },
-            ].map((t) => (
-              <button
-                key={t.id}
-                onClick={() => setPaymentTerms(t.id as any)}
-                disabled={loading || busy}
-                className={`px-3 py-1 font-mono text-xs border-2 border-ink transition ${
-                  paymentTerms === t.id ? 'bg-signal text-bone font-bold' : 'bg-bone text-ink hover:bg-ink/5'
-                }`}
-              >
-                {t.label}
-              </button>
-            ))}
+      {/* HEADER */}
+      <div className="max-w-md sm:max-w-lg mx-auto w-full px-4 pt-4 pb-2">
+        <div className="flex items-baseline justify-between">
+          <div>
+            <h1 className="font-display font-bold text-2xl text-slate-900">Voice Haggling Co-Pilot</h1>
+            <p className="text-xs text-slate-500 mt-0.5">
+              {loading ? 'Consulting Gemini…' : '7-line live bazaar negotiation in dialect'}
+            </p>
           </div>
+          <span className="px-2.5 py-1 rounded-full bg-orange-50 border border-orange-200 text-orange-700 text-[10px] font-mono font-bold uppercase">
+            Gemini TTS
+          </span>
+        </div>
+
+        {/* PAYMENT TERMS TOGGLE */}
+        <div className="mt-3 p-1 rounded-xl bg-slate-200/80 grid grid-cols-3 gap-1 text-[11px] font-semibold">
+          {[
+            { id: 'cash', label: '💵 Spot Cash' },
+            { id: '15_days', label: '⏳ 15d Udhaar' },
+            { id: '30_days', label: '📦 30d Credit' },
+          ].map((t) => (
+            <button
+              key={t.id}
+              onClick={() => setPaymentTerms(t.id as any)}
+              disabled={loading || busy}
+              className={`py-1.5 px-2 rounded-lg text-center transition ${
+                paymentTerms === t.id
+                  ? 'bg-white text-orange-600 shadow-sm font-bold'
+                  : 'text-slate-600 hover:text-slate-900'
+              }`}
+            >
+              {t.label}
+            </button>
+          ))}
         </div>
       </div>
 
       {error && (
-        <div className="mx-5 mt-3 p-3 border-2 border-warn text-warn text-xs font-mono">
-          ⚠ {error} — using fallback script
+        <div className="max-w-md mx-auto w-full px-4 mt-2">
+          <div className="p-2.5 rounded-xl bg-rose-50 text-rose-700 text-xs font-mono border border-rose-200">
+            ⚠ {error} — using fallback negotiation script
+          </div>
         </div>
       )}
 
-      <div className="flex-1 overflow-y-auto p-5 space-y-3 pb-32">
+      {/* CONVERSATION AREA */}
+      <div className="flex-1 max-w-md sm:max-w-lg mx-auto w-full px-4 py-4 space-y-3">
         {lines.length === 0 && !loading && (
-          <div className="text-center py-12">
-            <div className="font-display text-2xl">A 7-line haggling scene</div>
-            <div className="mt-2 font-mono text-xs text-ghost max-w-md mx-auto">
-              The supplier quotes an unfair price. MARGINS whispers back. The shopkeeper pushes back. Settle, or walk.
+          <div className="p-8 rounded-3xl bg-white border border-slate-200/80 text-center shadow-sm space-y-2 mt-4">
+            <div className="w-12 h-12 rounded-2xl bg-orange-50 text-orange-600 text-2xl flex items-center justify-center mx-auto">
+              🎙️
             </div>
+            <h2 className="font-display font-bold text-lg text-slate-900">
+              Amul Butter 500g &bull; Madurai
+            </h2>
+            <p className="text-xs text-slate-500 max-w-xs mx-auto leading-relaxed">
+              Distributor quotes ₹285. MARGINS whispers back the fair counter-offer in Tamil. Tap below to start.
+            </p>
           </div>
         )}
+
         {lines.map((t, i) => (
           <div
             key={i}
-            className={`pop-in max-w-[80%] p-4 border-2 border-ink ${
+            className={`pop-in p-4 rounded-2xl shadow-sm space-y-1 ${
               t.role === 'oracle'
-                ? 'ml-auto bg-ink text-bone shadow-brutal-signal'
+                ? 'bg-gradient-to-r from-orange-600 to-amber-600 text-white mx-1 my-2 shadow-md shadow-orange-500/20'
                 : t.role === 'supplier'
-                ? 'bg-paper shadow-brutal-sm'
-                : 'mr-auto bg-signal/10'
+                ? 'bg-white border border-slate-200 text-slate-900 mr-8 rounded-tl-sm'
+                : 'bg-slate-900 text-white ml-8 rounded-tr-sm'
             }`}
           >
-            <div className="font-mono text-[10px] uppercase tracking-widest opacity-60 mb-1">
-              {t.role === 'oracle' ? 'MARGINS · oracle' : t.role === 'supplier' ? 'Supplier (TN Distributors)' : 'You · Madurai kirana'}
+            <div className="flex items-center justify-between text-[10px] font-mono tracking-wider opacity-75">
+              <span>
+                {t.role === 'oracle'
+                  ? '⚡ MARGINS WHISPER'
+                  : t.role === 'supplier'
+                  ? '🚚 DISTRIBUTOR TRUCK'
+                  : '🏪 YOU (KIRANA OWNER)'}
+              </span>
+              {t.role === 'oracle' && playing && (
+                <span className="flex items-center gap-1 font-bold text-amber-200">
+                  <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                  Speaking…
+                </span>
+              )}
             </div>
-            <div className="text-base leading-snug">{t.text}</div>
-            {t.role === 'oracle' && playing && (
-              <div className="mt-1 flex items-center gap-1 font-mono text-[10px] opacity-60">
-                <span className="live-dot"></span> speaking
-              </div>
-            )}
+            <div className="text-sm font-medium leading-snug">{t.text}</div>
           </div>
         ))}
       </div>
 
-      <div className="fixed bottom-0 left-0 right-0 p-5 bg-bone border-t-2 border-ink">
-        {settled ? (
-          <div>
-            <div className="font-display text-center text-2xl mb-2">
-              ✓ settled at <span className="text-signal">₹{settled.final}</span> · saved ₹{settled.saved}
+      {/* FIXED BOTTOM ACTION BAR */}
+      <div className="fixed bottom-14 left-0 right-0 p-3 bg-white/95 backdrop-blur-md border-t border-slate-200 z-30">
+        <div className="max-w-md mx-auto">
+          {settled ? (
+            <div className="space-y-2">
+              <div className="p-3 rounded-xl bg-emerald-50 border border-emerald-200 text-center">
+                <span className="text-xs font-mono font-bold text-emerald-800 uppercase">
+                  ✓ Deal Closed at ₹{settled.final}
+                </span>
+                <div className="text-xs text-emerald-700 mt-0.5">
+                  Saved ₹{settled.saved} vs sticker MRP on {paymentTerms} terms!
+                </div>
+              </div>
+              <Link
+                href="/ledger"
+                className="block w-full py-3 rounded-xl bg-slate-900 text-white font-semibold text-center text-xs shadow-md hover:bg-slate-800 transition"
+              >
+                View in Margins Ledger &rarr;
+              </Link>
             </div>
-            <Link href="/ledger" className="block w-full py-3 bg-ink text-bone font-display text-center text-lg">
-              See in ledger →
-            </Link>
-          </div>
-        ) : (
-          <button
-            onClick={start}
-            disabled={loading || busy}
-            className="w-full py-4 bg-ink text-bone font-display text-xl disabled:opacity-40"
-          >
-            {loading ? '…' : busy ? (playing ? '🔊 playing…' : '…') : step >= 0 ? 'Replay' : 'Start haggling'}
-          </button>
-        )}
+          ) : (
+            <button
+              onClick={start}
+              disabled={loading || busy}
+              className="w-full py-3.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 text-white font-semibold text-sm shadow-md shadow-orange-500/20 hover:from-orange-500 hover:to-amber-500 disabled:opacity-50 transition flex items-center justify-center gap-2"
+            >
+              {loading ? (
+                'Consulting Gemini…'
+              ) : busy ? (
+                playing ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-white animate-ping" />
+                    <span>Audio Playing…</span>
+                  </>
+                ) : (
+                  'Next Speaker…'
+                )
+              ) : step >= 0 ? (
+                '↻ Replay Negotiation'
+              ) : (
+                '▶ Start Haggling Scene'
+              )}
+            </button>
+          )}
+        </div>
       </div>
 
       <SiteFooter />
@@ -219,7 +255,6 @@ export default function HagglePage() {
   );
 }
 
-/** Wrap raw L16 PCM (24kHz mono) into a minimal WAV file as a base64 blob URL. */
 function wavFromPcm(pcmB64: string, rate: number): string {
   const pcm = atob(pcmB64);
   const pcmBytes = new Uint8Array(pcm.length);
