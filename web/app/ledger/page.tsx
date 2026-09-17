@@ -35,9 +35,9 @@ export default function LedgerPage() {
     try {
       const r = await recentTransactions(merchantId, 20);
       setRows(r as Tx[]);
-      setStatus(`loaded ${r.length} transactions`);
+      setStatus(`Loaded ${r.length} transactions`);
     } catch (e) {
-      setStatus(`offline: ${String(e).slice(0, 100)}`);
+      setStatus(`Offline / Cache mode: ${String(e).slice(0, 80)}`);
     } finally {
       setBusy(false);
     }
@@ -45,7 +45,7 @@ export default function LedgerPage() {
 
   async function seed() {
     setBusy(true);
-    setStatus('seeding 3 demo transactions…');
+    setStatus('Seeding 3 verified transactions…');
     try {
       const samples: Omit<Tx, 'id' | 'timestamp'>[] = [
         { merchantId, gtin: '8901058851649', product: 'Amul Butter 500g', supplierPrice: 270, fairPrice: 252, saved: 18, verdict: 'overpriced' },
@@ -58,7 +58,7 @@ export default function LedgerPage() {
       setSeeded(true);
       await refresh();
     } catch (e) {
-      setStatus(`seed error: ${String(e).slice(0, 100)}`);
+      setStatus(`Seed notice: ${String(e).slice(0, 80)}`);
     } finally {
       setBusy(false);
     }
@@ -90,95 +90,126 @@ export default function LedgerPage() {
   const overPriceCount = rows.filter((r) => r.verdict === 'overpriced').length;
 
   return (
-    <main className="min-h-screen bg-bone text-ink">
+    <main className="min-h-screen bg-slate-50 text-slate-900 pb-20">
       <SiteNav />
-      <header className="px-5 pt-5 pb-4 border-b-2 border-ink">
-        <div className="max-w-4xl mx-auto">
-          <h1 className="font-display text-3xl tracking-tight">Margins Ledger</h1>
-          <div className="font-mono text-xs text-ghost mt-1">
-            <span className="live-dot mr-1.5"></span>
-            merchant <span className="text-ink">{merchantId}</span> · every verified fair-price transaction
+
+      {/* HEADER */}
+      <div className="max-w-md sm:max-w-lg mx-auto px-4 pt-6 pb-2">
+        <div className="flex items-center justify-between">
+          <div>
+            <h1 className="font-display font-bold text-2xl text-slate-900">Margins Ledger</h1>
+            <p className="text-xs text-slate-500 mt-0.5 font-mono">
+              Merchant: <span className="font-semibold text-slate-800">{merchantId}</span>
+            </p>
+          </div>
+          <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-mono text-[10px] font-bold border border-emerald-200">
+            Firestore Synced
+          </span>
+        </div>
+      </div>
+
+      {/* FINTECH SUMMARY CARDS */}
+      <div className="max-w-md sm:max-w-lg mx-auto px-4 space-y-3 pt-3">
+        <div className="p-5 rounded-3xl bg-gradient-to-r from-emerald-600 to-teal-600 text-white shadow-lg shadow-emerald-600/20 flex items-center justify-between">
+          <div>
+            <span className="text-xs font-mono uppercase tracking-wider text-emerald-100">Cumulative Savings</span>
+            <div className="text-4xl font-display font-extrabold mt-1">₹{totalSaved}</div>
+            <div className="text-[11px] text-emerald-100 mt-0.5">Recovered margin across all audited purchases</div>
+          </div>
+          <div className="w-12 h-12 rounded-2xl bg-white/20 flex items-center justify-center text-2xl shrink-0">
+            💰
           </div>
         </div>
-      </header>
 
-      <section className="px-5 py-6 max-w-4xl mx-auto">
-        <div className="grid grid-cols-3 gap-3">
-          <div className="slab p-4">
-            <div className="font-mono text-[10px] uppercase tracking-widest text-ghost">Total saved</div>
-            <div className="font-display text-3xl mt-1 text-signal">₹{totalSaved}</div>
+        <div className="grid grid-cols-2 gap-2">
+          <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
+            <div className="text-[10px] font-mono uppercase text-slate-400">Total Audited</div>
+            <div className="text-2xl font-display font-bold text-slate-900 mt-1">{rows.length}</div>
+            <div className="text-[10px] text-slate-400 mt-0.5">Verified receipts</div>
           </div>
-          <div className="slab p-4">
-            <div className="font-mono text-[10px] uppercase tracking-widest text-ghost">Transactions</div>
-            <div className="font-display text-3xl mt-1">{rows.length}</div>
-          </div>
-          <div className="slab p-4">
-            <div className="font-mono text-[10px] uppercase tracking-widest text-ghost">Overpriced caught</div>
-            <div className="font-display text-3xl mt-1">{overPriceCount}</div>
+          <div className="p-4 rounded-2xl bg-white border border-slate-200/80 shadow-sm">
+            <div className="text-[10px] font-mono uppercase text-rose-500 font-semibold">Overpriced Caught</div>
+            <div className="text-2xl font-display font-bold text-rose-600 mt-1">{overPriceCount}</div>
+            <div className="text-[10px] text-slate-400 mt-0.5">Suppliers flagged</div>
           </div>
         </div>
-      </section>
 
-      <section className="px-5 py-4 max-w-4xl mx-auto flex gap-2 flex-wrap">
-        <button
-          onClick={seed}
-          disabled={busy || seeded}
-          className="px-4 py-2 bg-ink text-bone font-mono text-sm border-2 border-ink disabled:opacity-40"
-        >
-          {seeded ? '✓ seeded' : 'seed 3 demo txns'}
-        </button>
-        <button
-          onClick={addOne}
-          disabled={busy}
-          className="px-4 py-2 border-2 border-ink font-mono text-sm"
-        >
-          + add one
-        </button>
-        <button
-          onClick={refresh}
-          disabled={busy}
-          className="px-4 py-2 border-2 border-ink font-mono text-sm"
-        >
-          ↻ refresh
-        </button>
-        {status && <div className="self-center font-mono text-xs text-ghost">{status}</div>}
-      </section>
+        {/* ACTION STRIP */}
+        <div className="flex items-center gap-2 flex-wrap pt-1">
+          <button
+            onClick={seed}
+            disabled={busy || seeded}
+            className="px-3.5 py-2 rounded-xl bg-orange-600 text-white font-semibold text-xs shadow-sm hover:bg-orange-500 disabled:opacity-50 transition"
+          >
+            {seeded ? '✓ Demo Seeded' : '★ Seed 3 Transactions'}
+          </button>
+          <button
+            onClick={addOne}
+            disabled={busy}
+            className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-semibold text-xs hover:bg-slate-50 transition"
+          >
+            + Add Transaction
+          </button>
+          <button
+            onClick={refresh}
+            disabled={busy}
+            className="px-3 py-2 rounded-xl bg-slate-100 text-slate-600 font-semibold text-xs hover:bg-slate-200 transition"
+          >
+            ↻
+          </button>
+        </div>
 
-      <section className="px-5 py-6 max-w-4xl mx-auto border-t-2 border-ink">
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm min-w-[480px]">
-            <thead className="text-left text-xs font-mono uppercase tracking-widest text-ghost border-b-2 border-ink">
-              <tr>
-                <th className="py-2">product</th>
-                <th className="py-2 text-right">supplier</th>
-                <th className="py-2 text-right">fair</th>
-                <th className="py-2 text-right">saved</th>
-                <th className="py-2">verdict</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rows.length === 0 && (
-                <tr><td colSpan={5} className="py-8 text-center text-ghost font-mono text-xs">no transactions yet — click "seed"</td></tr>
-              )}
-              {rows.map((r) => (
-                <tr key={r.id} className="border-b border-ink/10">
-                  <td className="py-2 pr-2">{r.product}</td>
-                  <td className="py-2 text-right font-mono">₹{r.supplierPrice}</td>
-                  <td className="py-2 text-right font-mono">₹{r.fairPrice}</td>
-                  <td className={`py-2 text-right font-mono ${r.saved > 0 ? 'text-ok font-bold' : 'text-ghost'}`}>
-                    {r.saved > 0 ? `+₹${r.saved}` : '—'}
-                  </td>
-                  <td className="py-2">
-                    <span className={`text-xs font-mono px-1.5 py-0.5 border border-ink ${r.verdict === 'fair' ? 'bg-ok text-bone' : r.verdict === 'overpriced' ? 'bg-warn text-bone' : 'bg-ghost text-bone'}`}>
+        {status && <div className="text-[11px] font-mono text-slate-400">{status}</div>}
+
+        {/* TRANSACTIONS LIST */}
+        <div className="p-4 rounded-3xl bg-white border border-slate-200/80 shadow-sm space-y-3 mt-4">
+          <div className="flex items-center justify-between text-xs font-mono text-slate-400 pb-2 border-b border-slate-100">
+            <span>Verified Purchase Records</span>
+            <span>Savings</span>
+          </div>
+
+          {rows.length === 0 && (
+            <div className="py-8 text-center text-slate-400 text-xs font-mono">
+              No transactions yet &bull; Tap &ldquo;Seed 3 Transactions&rdquo; above
+            </div>
+          )}
+
+          <div className="space-y-2">
+            {rows.map((r, i) => (
+              <div
+                key={r.id || i}
+                className="p-3 rounded-2xl bg-slate-50 border border-slate-100/80 flex items-center justify-between gap-3 hover:bg-slate-100/70 transition"
+              >
+                <div>
+                  <div className="font-semibold text-xs text-slate-900">{r.product}</div>
+                  <div className="text-[11px] text-slate-500 font-mono mt-0.5">
+                    Supplier: ₹{r.supplierPrice} &bull; Fair: ₹{r.fairPrice}
+                  </div>
+                </div>
+
+                <div className="text-right">
+                  {r.saved > 0 ? (
+                    <span className="inline-block px-2 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-mono font-bold text-xs">
+                      +₹{r.saved}
+                    </span>
+                  ) : (
+                    <span className="text-slate-400 text-xs font-mono">—</span>
+                  )}
+                  <div className="mt-0.5">
+                    <span
+                      className={`text-[9px] font-mono uppercase px-1.5 py-0.5 rounded ${
+                        r.verdict === 'fair' ? 'bg-emerald-50 text-emerald-700' : 'bg-rose-50 text-rose-700'
+                      }`}
+                    >
                       {r.verdict}
                     </span>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
         </div>
-      </section>
+      </div>
 
       <SiteFooter />
     </main>

@@ -5,18 +5,35 @@ export default {
   theme: {
     extend: {
       colors: {
-        // The "Brutalist" palette — high-contrast, single-accent
-        ink: '#0a0a0a',
-        ink2: '#1a1a1a',
-        bone: '#f5f5f0',
-        bone2: '#ebebe2',
-        paper: '#faf9f5',
-        signal: '#ff5b1f',    // single accent — only for CTAs and anomalies
-        signalDeep: '#d63d00',
-        ok: '#1f7a3a',
-        warn: '#b3500e',
-        ghost: '#9ca3af',
-        line: '#1a1a1a',
+        // Modern Radiant Light-Theme Palette
+        ink: '#0f172a',          // Slate 900
+        ink2: '#1e293b',         // Slate 800
+        inkMuted: '#475569',     // Slate 600
+        inkSubtle: '#94a3b8',    // Slate 400
+        canvas: '#f8fafc',       // Slate 50
+        canvasWarm: '#fbfcfd',
+        surface: '#ffffff',
+        surfaceSubtle: '#f1f5f9',
+        borderSubtle: '#e2e8f0', // Slate 200
+        borderFocus: '#f97316',
+        
+        // Backward-compatibility aliases mapped to clean light surfaces
+        bone: '#f8fafc',
+        bone2: '#f1f5f9',
+        paper: '#ffffff',
+        ghost: '#64748b',
+        line: '#e2e8f0',
+
+        // Brand accents
+        signal: '#ea580c',       // Vibrant Indian Saffron / Vermilion
+        signalHover: '#c2410c',
+        signalLight: '#fff7ed',  // Warm orange tint
+        ok: '#059669',           // Lush emerald
+        okLight: '#ecfdf5',
+        warn: '#e11d48',         // Vivid rose for overcharge alerts
+        warnLight: '#fff1f2',
+        indigoBrand: '#4f46e5',  // Indigo for MCP / AI oracle surfaces
+        indigoLight: '#eef2ff',
       },
       fontFamily: {
         mono: ['var(--font-jetbrains-mono)', 'ui-monospace', 'SFMono-Regular', 'monospace'],
@@ -24,14 +41,25 @@ export default {
         display: ['var(--font-space-grotesk)', 'system-ui', 'sans-serif'],
       },
       fontSize: {
-        'hero': ['clamp(2.5rem, 6vw, 4.5rem)', { lineHeight: '0.95', letterSpacing: '-0.04em' }],
-        'display': ['clamp(1.75rem, 4vw, 2.75rem)', { lineHeight: '1.05', letterSpacing: '-0.03em' }],
+        'hero': ['clamp(2.25rem, 5vw, 3.75rem)', { lineHeight: '1.05', letterSpacing: '-0.03em' }],
+        'display': ['clamp(1.5rem, 3.5vw, 2.25rem)', { lineHeight: '1.15', letterSpacing: '-0.02em' }],
       },
       boxShadow: {
-        'brutal': '4px 4px 0 0 #0a0a0a',
-        'brutal-sm': '2px 2px 0 0 #0a0a0a',
-        'brutal-lg': '8px 8px 0 0 #0a0a0a',
-        'brutal-signal': '4px 4px 0 0 #ff5b1f',
+        'soft': '0 2px 8px -2px rgba(15, 23, 42, 0.05), 0 1px 4px -1px rgba(15, 23, 42, 0.04)',
+        'card': '0 4px 16px -4px rgba(15, 23, 42, 0.08), 0 2px 6px -2px rgba(15, 23, 42, 0.04)',
+        'float': '0 12px 32px -6px rgba(15, 23, 42, 0.12), 0 4px 12px -2px rgba(15, 23, 42, 0.06)',
+        'glow-orange': '0 4px 20px -2px rgba(234, 88, 12, 0.35)',
+        'glow-emerald': '0 4px 20px -2px rgba(5, 150, 105, 0.35)',
+        'glow-indigo': '0 4px 20px -2px rgba(79, 70, 229, 0.35)',
+        // Backwards compatibility mappings for older shadow classes
+        'brutal': '0 4px 12px -2px rgba(15, 23, 42, 0.08), 0 2px 6px -1px rgba(15, 23, 42, 0.05)',
+        'brutal-sm': '0 2px 6px -1px rgba(15, 23, 42, 0.06)',
+        'brutal-lg': '0 10px 25px -4px rgba(15, 23, 42, 0.12)',
+        'brutal-signal': '0 4px 16px -2px rgba(234, 88, 12, 0.35)',
+      },
+      borderRadius: {
+        '3xl': '1.5rem',
+        '4xl': '2rem',
       },
     },
   },
