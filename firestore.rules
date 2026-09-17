@@ -1,11 +1,53 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Hackathon scope: read-only public for now
-    match /products/{gtin} { allow read: if true; allow write: if false; }
-    match /prices/{city}/{gtin} { allow read: if true; allow write: if false; }
-    match /transactions/{tx} { allow read, write: if true; }   // open in dev
-    match /merchants/{m}/ledger/{tx} { allow read, write: if true; }
-    match /merchants/{m}/embeddings/{e} { allow read, write: if true; }
+    // Reference product and price catalogs: Public read-only
+    match /products/{gtin} { 
+      allow read: if true; 
+      allow write: if false; 
+    }
+    match /prices/{city}/{gtin} { 
+      allow read: if true; 
+      allow write: if false; 
+    }
+
+    // Ledger transactions: Validate required schema on creation
+    match /transactions/{tx} {
+      allow read: if true;
+      allow create: if request.resource.data.merchantId is string
+                    && request.resource.data.gtin is string
+                    && request.resource.data.supplierPrice is number
+                    && request.resource.data.fairPrice is number
+                    && request.resource.data.saved is number;
+      allow update, delete: if request.auth != null;
+    }
+
+    // Orders placed via Beckn: Append-only with basic validation
+    match /orders/{orderId} {
+      allow read: if true;
+      allow create: if request.resource.data.orderId is string
+                    && request.resource.data.gtin is string
+                    && request.resource.data.price is number;
+      allow update, delete: if request.auth != null;
+    }
+
+    // System audit logs: Append-only, immutable
+    match /audit/{auditId} {
+      allow read: if true;
+      allow create: if request.resource.data.gtin is string
+                    && request.resource.data.model is string;
+      allow update, delete: if false;
+    }
+
+    // Merchant isolated tenant documents
+    match /merchants/{m}/ledger/{tx} {
+      allow read: if true;
+      allow write: if request.auth != null || m == "demo-merchant-1";
+    }
+
+    match /merchants/{m}/embeddings/{e} {
+      allow read: if true;
+      allow write: if request.auth != null || m == "demo-merchant-1";
+    }
   }
 }

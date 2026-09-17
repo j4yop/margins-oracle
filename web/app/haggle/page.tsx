@@ -30,6 +30,7 @@ const FALLBACK_SCRIPT: Line[] = [
 const DEFAULT_PRODUCT = { gtin: '8901058851649', city: 'Madurai', lang: 'ta' as const };
 
 export default function HagglePage() {
+  const [paymentTerms, setPaymentTerms] = useState<'cash' | '15_days' | '30_days'>('15_days');
   const [script, setScript] = useState<Script | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
   const [playing, setPlaying] = useState(false);
@@ -41,17 +42,20 @@ export default function HagglePage() {
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   useEffect(() => {
-    loadScript();
-  }, []);
+    loadScript(paymentTerms);
+  }, [paymentTerms]);
 
-  async function loadScript() {
+  async function loadScript(terms: 'cash' | '15_days' | '30_days' = paymentTerms) {
     setLoading(true);
     setError(null);
+    setLines([]);
+    setStep(-1);
+    setSettled(null);
     try {
       const r = await fetch('/api/haggle/script', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify(DEFAULT_PRODUCT),
+        body: JSON.stringify({ ...DEFAULT_PRODUCT, paymentTerms: terms }),
       });
       if (!r.ok) throw new Error(`HTTP ${r.status}`);
       const data = (await r.json()) as Script;
@@ -125,6 +129,30 @@ export default function HagglePage() {
           </div>
         </div>
       </header>
+
+      <div className="bg-paper border-b-2 border-ink px-5 py-3">
+        <div className="max-w-3xl mx-auto flex items-center justify-between gap-3 flex-wrap">
+          <span className="font-mono text-xs uppercase tracking-widest text-ghost">Payment Leverage:</span>
+          <div className="flex gap-2">
+            {[
+              { id: 'cash', label: 'Spot Cash (UPI)' },
+              { id: '15_days', label: '15-Day Udhaar' },
+              { id: '30_days', label: '30-Day Credit' },
+            ].map((t) => (
+              <button
+                key={t.id}
+                onClick={() => setPaymentTerms(t.id as any)}
+                disabled={loading || busy}
+                className={`px-3 py-1 font-mono text-xs border-2 border-ink transition ${
+                  paymentTerms === t.id ? 'bg-signal text-bone font-bold' : 'bg-bone text-ink hover:bg-ink/5'
+                }`}
+              >
+                {t.label}
+              </button>
+            ))}
+          </div>
+        </div>
+      </div>
 
       {error && (
         <div className="mx-5 mt-3 p-3 border-2 border-warn text-warn text-xs font-mono">

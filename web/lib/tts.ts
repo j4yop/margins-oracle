@@ -15,31 +15,20 @@ export type TTSOpts = {
 };
 
 export async function synthesizeSpeech({ text, voice = 'Kore', lang = 'ta-IN' }: TTSOpts): Promise<string> {
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-  if (!apiKey) throw new Error('no API key');
+  const r = await fetch('/api/tts', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ text, voice, lang }),
+  });
 
-  const r = await fetch(
-    `https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${apiKey}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        contents: [{ role: 'user', parts: [{ text }] }],
-        generationConfig: {
-          responseModalities: ['AUDIO'],
-          speechConfig: {
-            voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } },
-            languageCode: lang,
-          },
-        },
-      }),
-    },
-  );
-  if (!r.ok) throw new Error(`TTS ${r.status}: ${await r.text()}`);
+  if (!r.ok) {
+    const err = await r.json().catch(() => ({ error: `HTTP ${r.status}` }));
+    throw new Error(err.error || `TTS failed with status ${r.status}`);
+  }
+
   const d = await r.json();
-  const inline = d?.candidates?.[0]?.content?.parts?.[0]?.inlineData;
-  if (!inline?.data) throw new Error('no audio in response');
-  return inline.data; // base64 audio (wav typically)
+  if (!d?.audioB64) throw new Error('no audio in response');
+  return d.audioB64; // base64 audio (wav typically)
 }
 
 /** Convert base64 audio to a Blob URL the browser can play. */
