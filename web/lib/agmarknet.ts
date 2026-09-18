@@ -4,10 +4,10 @@
  * Source: https://agmarknet.gov.in  (public, no key)
  * Format: daily wholesale prices for commodities across Indian mandis.
  *
- * Free, no auth. For hackathon we use a static snapshot in /data
- * because scraping the live site during a 90-sec demo is fragile.
+ * Free, no auth. Uses a cached mandi snapshot in /data for
+ * high-reliability low-latency benchmarks.
  *
- * In Phase 4 we'll wire the live RSS feed.
+ * Live RSS feed sync can be plugged dynamically.
  */
 
 type MandiPrice = { price: number; url: string };
@@ -25,8 +25,7 @@ const SNAPSHOT: Record<string, Record<string, MandiPrice>> = {
 };
 
 function keyFromGTIN(gtin: string): string {
-  // Map GTINs to commodity keys. For hackathon this is hand-curated;
-  // in Phase 4 we'll add a full mapping table.
+  // Map GTINs to commodity keys benchmark records.
   if (gtin === '8901058851649') return 'amul-butter-500g';
   if (gtin === '8901030865278') return 'parle-g-1kg';
   return '';

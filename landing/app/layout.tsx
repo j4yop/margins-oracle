@@ -12,7 +12,7 @@ export const metadata: Metadata = {
     'A phone-based Gemini agent. Point the camera at any product. Ask in your dialect. Get the real price. Haggle live. Order through ONDC. Expose it to every other AI agent in India.',
   openGraph: {
     title: 'MARGINS — the fairness oracle for India\'s 63M shopkeepers',
-    description: 'Built on Gemini, ONDC Beckn, MCP. Google Gemini hackathon entry.',
+    description: 'Autonomous Wholesale Fairness Oracle & Open Commerce Rail powered by Gemini, ONDC Beckn, and MCP.',
     type: 'website',
   },
   twitter: {

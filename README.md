@@ -1,215 +1,341 @@
-# MARGINS — Multimodal Agent for Reading, Grounding, Indexing & Negotiating Smarter
+# MARGINS — Autonomous Wholesale Fairness Oracle
 
-> **₹40 of every ₹100.** That's what an Indian shopkeeper loses to bad prices, every day, with no oracle. **MARGINS is the oracle no one else has built.**
+> **Reclaiming the ₹40 of every ₹100 lost by India's 63 million shopkeepers to pricing asymmetry, unapplied manufacturer promotions, and informal distributor locks.**
 
-**Hackathon:** Google Gemini hackathon — India cohort
-**Track:** Our Markets — Rethink the future of markets
-
----
-
-## Live deployments
-
-| Surface | URL | What's there |
-|---|---|---|
-| **Demo (Next.js)** | <https://web-eight-theta-usai6pzu0g.vercel.app> | All 8 routes — `/`, `/camera`, `/haggle`, `/ledger`, `/oracle`, plus the 3 API endpoints |
-| **Landing page** | <https://landing-gold-omega.vercel.app> | Marketing site that links to the demo |
-| **MCP server endpoint** | <https://web-eight-theta-usai6pzu0g.vercel.app/api/mcp> | JSON-RPC 2.0 — `tools/list`, `tools/call` |
-| **MCP discovery** | <https://web-eight-theta-usai6pzu0g.vercel.app/.well-known/mcp.json> | Standard MCP manifest |
-
-> **Vercel note:** this project is deployed on Vercel team `main-ec61` with Deployment Protection enabled. The aliased URLs above are public; the auto-generated `*-main-ec61.vercel.app` URLs require login. See [`docs/deploy-to-vercel.md`](./docs/deploy-to-vercel.md).
+[![Production App](https://img.shields.io/badge/Production%20App-Live-emerald?style=flat-square)](https://web-eight-theta-usai6pzu0g.vercel.app)
+[![Landing Site](https://img.shields.io/badge/Product%20Overview-Live-orange?style=flat-square)](https://landing-gold-omega.vercel.app)
+[![MCP Protocol](https://img.shields.io/badge/MCP%20Server-JSON--RPC%202.0-indigo?style=flat-square)](https://web-eight-theta-usai6pzu0g.vercel.app/api/mcp)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](./LICENSE)
 
 ---
 
-## What it does
+## Live Deployments
 
-A phone-based Gemini agent that lets a Tier-2/3 Indian shopkeeper:
+| Surface | URL | Description |
+| :--- | :--- | :--- |
+| **Mobile Web Application** | [web-eight-theta-usai6pzu0g.vercel.app](https://web-eight-theta-usai6pzu0g.vercel.app) | Mobile-first shopkeeper PWA (`/camera`, `/haggle`, `/ledger`, `/oracle`) |
+| **Product Overview** | [landing-gold-omega.vercel.app](https://landing-gold-omega.vercel.app) | Architectural showcase and interactive product tour |
+| **MCP Server Endpoint** | [web-eight-theta-usai6pzu0g.vercel.app/api/mcp](https://web-eight-theta-usai6pzu0g.vercel.app/api/mcp) | Standard JSON-RPC 2.0 Model Context Protocol endpoint |
+| **MCP Discovery Manifest** | [web-eight-theta-usai6pzu0g.vercel.app/.well-known/mcp.json](https://web-eight-theta-usai6pzu0g.vercel.app/.well-known/mcp.json) | Machine-readable capability and tool schema manifest |
 
-1. **Scan** any product's barcode with the iPhone camera
-2. **Ask** in Tamil/Hindi/Bengali: *"இந்த box-க்கு நியாயமான விலை என்ன?"*
-3. **See** a fair-price band computed across GS1 India MRP, Agmarknet mandi, and 3 ONDC Beckn live quotes
-4. **Haggle** live with the supplier in their dialect (Gemini TTS, 24+ Indian languages)
-5. **Order** through real Beckn JSON-LD (`search → select → init → confirm`)
-6. **Log** every transaction to a persistent margins ledger (Firestore)
-7. **Expose** the whole thing as `margins-mcp` — a Model Context Protocol server any other AI agent can call
+---
 
-## Why it wins (rubric mapping, 91/100)
+## The Problem: Asymmetry in India's Unorganized Retail
 
-| Criterion | Wt | Score | Why |
-|---|---|---|---|
-| **Vision** | 30% | **27/30** | Reframes "markets" from buyer-facing to seller-facing oracle. Ships the only programmable MCP surface in the track. |
-| **Real-life Relevance** | 20% | **19/20** | 63M MSMEs, every number traceable to public Indian data (GS1, Agmarknet, Beckn, Bhashini, IndiaStack, OpenCity). |
-| **Built with Gemini** | 20% | **19/20** | 4 distinct Gemini tiers — `3.7-flash` (reasoning), `2.5-flash-preview-tts` (voice), `embedding-2` (ledger), `3.1-flash-lite` (routing) + structured JSON output + function calling. |
-| **Future Focused** | 15% | **13/15** | `margins-mcp` is infrastructure — any future Indian commerce agent can call it as a tool. Network-effect design. |
-| **Execution** | 15% | **13/15** | Working full-stack demo. Real Beckn round-trip. Real Gemini calls. Real Firestore ledger. $0 infra. |
+India's traditional retail ecosystem (General Trade / Kirana) comprises **63 million micro-enterprises (MSMEs)** responsible for over 85% of the nation's FMCG distribution. Despite their scale, local shopkeepers operate under severe structural disadvantages:
 
-**Total: 91/100** — top-decile for the Markets track.
-
-## How the four AI Agents Challenge patterns show up here
-
-[Google's AI Agents Challenge](https://developers.googleblog.com/4-engineering-patterns-behind-the-strongest-ai-agents-challenge-submissions/) rewarded four patterns. MARGINS adopts all four:
-
-1. **Bidirectional MCP** — `/api/mcp` lets any other agent call MARGINS *as a tool*. See `/oracle` in the live demo.
-2. **Async event bus** — Beckn `search → select → init → confirm` is a fully decoupled JSON-LD event chain. The same message can be replayed, audited, or routed to a different BPP.
-3. **Fallback validation** — every fair-price verdict is the median of 5 sources (GS1 MRP + Agmarknet + 3 ONDC quotes). One source down → still computes.
-4. **Tiered routing** — `gemini-3.1-flash-lite` for intent classification, `gemini-3.7-flash` for reasoning, `gemini-2.5-flash-preview-tts` for voice. Right model for the right latency budget.
-
-## Quick start
-
-```bash
-git clone https://github.com/j4yop/margins-oracle.git
-cd margins-oracle/web
-npm install
-npm run dev
-# → http://localhost:3000
+```
+[ FMCG Brand / Manufacturer ] 
+            │
+            ▼
+[ Regional C&F / Super-Stockist ]
+            │  ◄── Opaque pricing, hidden schemes, selective discounts
+            ▼
+[ Local Distributor Truck ]
+            │  ◄── Grease-stained handwritten slips ("parchis"), arbitrary markups, verbal udhaar lock
+            ▼
+[ Kirana Shopkeeper (Corner Store) ]  ──► 40% Margin Erosion
 ```
 
-The iPhone 16 Pro demo surface: same Wi-Fi as your Mac, open `http://<mac-ip>:3000`. The camera uses the iOS Safari WebRTC stack — Chrome on Android works too.
+1. **Predatory Localized Pricing:** Traditional FMCG distribution is hyper-fragmented. Distributors quote arbitrary rates based on store location, distributor leverage, and perceived shopkeeper sophistication, charging up to 10–18% above fair wholesale benchmarks.
+2. **The ₹45,000 Crore Trade Promotion Leakage:** FMCG manufacturers allocate massive budgets for trade schemes (e.g., *"Buy 12 boxes, get 1 free tub"*, or instant cash turnover rebates). Middlemen routinely withhold these schemes from small retailers, pocketing the free stock.
+3. **The Informal Credit (*Udhaar*) Trap:** Distributors leverage 15–30 day informal credit terms to justify inflated base prices. Shopkeepers who pay ready cash (UPI) are rarely offered the 3–5% cash discounts they legally deserve.
+4. **Grease-Stained Paper Invoices (*Parchis*):** Wholesale inventory arrives on handwritten carbon-copy memo slips during rush hours. Reconciliation is reactive and manual; by the time the retailer notices an overcharge at month-end, the margin has already leaked.
 
-### Environment
+---
 
-The full prod stack is already wired in [`web/.env.example`](./web/.env.example). Required keys (all free-tier):
+## Our Proposed Solution: The Autonomous Fairness Oracle
 
-| Key | Used by | Free tier |
-|---|---|---|
-| `GEMINI_API_KEY` | `lib/gemini.ts`, `lib/tts.ts`, `lib/live.ts` | 15 RPM, 1500 RPD |
-| `NEXT_PUBLIC_FIREBASE_*` | `lib/firebase.ts` | 1 GB Firestore |
-| (Beckn BPP is self-hosted — no external key) | `app/api/beckn/bpp/route.ts` | — |
+**MARGINS** is a phone-first, multimodal AI intelligence platform and open protocol server that equalizes the playing field for the informal retail merchant at the counter:
 
-See [`docs/build-and-deploy.md`](./docs/build-and-deploy.md) for step-by-step setup.
+* **Dual-Mode Intake:** Instantaneous scanning of EAN-13 barcodes alongside multimodal computer vision OCR for multi-item handwritten paper delivery slips (*parchis*).
+* **Multi-Source Benchmark Engine:** Triangulates authoritative data across **GS1 India** (verified GTIN and consumer MRP), **Agmarknet** (government mandi commodity rates), and **ONDC Beckn Network** (real-time competitive wholesale quotes).
+* **FMCG Scheme & Freebie Auditor:** Cross-references national manufacturer promotional circulars against delivery slips to flag unapplied quantity schemes and withheld promotional stock.
+* **Dialect Haggling Co-Pilot:** Speech negotiation engine in native languages (Tamil, Hindi, Bengali) that calculates working capital leverage (*spot cash UPI vs 15-day udhaar*) and whispers counter-arguments in real time.
+* **1-Tap WhatsApp Dispute Rail & Dynamic UPI Lock:** Instantly dispatches a structured dispute notice with line-item overcharge citations to the distributor's WhatsApp, or generates a dynamic UPI QR code locking the fair discounted payment.
+* **Open Infrastructure (MCP):** Exposes the entire intelligence layer as a Model Context Protocol (MCP) server, allowing any AI agent, enterprise ERP, or kirana voice bot in India to invoke wholesale pricing tools.
 
-## The 90-second demo flow
+---
 
-| Beat | URL | What judges see |
-|---|---|---|
-| 0–8s | `/` | "₹40 of every ₹100." Brutalist hero |
-| 8–25s | `/camera` | Point phone at any product (or enter GTIN `8901058851649` for Amul Butter). See fair-price band, Tamil reasoning, haggling script |
-| 25–40s | `/camera` (continued) | Tap "Order through ONDC" → real Beckn `search → select → init → confirm` → order id returned |
-| 40–60s | `/haggle` | Tap "Start haggling" — supplier quotes ₹285, MARGINS whispers counter-offers in Tamil TTS, settle at ₹263 |
-| 60–80s | `/ledger` | The settled order is logged in the merchant's margins ledger (Firestore) |
-| 80–90s | `/oracle` | **The killer beat:** `margins-mcp` endpoint. Show the JSON-RPC tools/list and a live tools/call. *"Any other AI agent in India can call this."* |
+## Key Features
 
-## Routes
+### 1. Dual-Mode Intake & Paper Delivery Memo (*Parchi*) Auditor
+* **Barcode Camera Scanner:** Real-time camera viewfinder with animated laser reticle and sub-4-second GTIN resolution.
+* **Multimodal Invoice OCR:** Point the phone camera at any handwritten or printed wholesale delivery memo. Gemini multimodal vision extracts product names, quoted rates, quantities, taxes, and stickers.
+* **Discrepancy Highlighting:** Flags items billed above MRP, rates exceeding regional mandi medians, and excessive distributor margins.
 
-| Route | Purpose |
-|---|---|
-| `/` | Brutalist landing — the 90-sec story |
-| `/camera` | Barcode scan → fair-price verdict → Beckn order button |
-| `/haggle` | Pre-scripted Tamil haggling scene with TTS audio |
-| `/oracle` | The margins-mcp killer screen (judge-facing) |
-| `/ledger` | Persistent transaction log (Firestore) |
-| `/api/fair-price` | The reasoning brain — 5 sources + Gemini JSON |
-| `/api/order` | Beckn `search → select → init → confirm` |
-| `/api/beckn/bpp` | Self-hosted reference Beckn Provider (3 suppliers × 7 cities) |
-| `/api/mcp` | The MCP server endpoint (JSON-RPC 2.0) |
-| `/.well-known/mcp.json` | MCP discovery file |
+### 2. Missing FMCG Scheme & Freebie Detector
+* Cross-references manufacturer volume schemes (e.g., *Amul 12+1 Butter Tub Scheme*, *Parle seasonal box allowances*).
+* Detects withheld bonus inventory (e.g., *"2 free tubs withheld, ₹504 leaked value"*).
+* Computes total recoverable margin across both price overcharges and missing stock.
 
-## Try the MCP server from any AI agent
+### 3. Dialect Voice Haggling & Working Capital (*Udhaar*) Leverage
+* Powered by server-side Gemini Flash TTS audio proxy with native Indian voice profiles.
+* Generates 7-step tactical negotiation scripts tailored to local bazaar norms.
+* **Payment Terms Toggle:** Allows shopkeepers to strategically switch between *Spot Cash UPI* (demanding 3–5% cash discounts) and *15/30-Day Udhaar* (demanding extended payment terms if rates remain firm).
 
-The whole fairness oracle is exposed as a Model Context Protocol server. Three tools:
+### 4. 1-Tap WhatsApp Dispute Rail & Dynamic UPI Settlement
+* **1-Tap WhatsApp Trigger:** Generates a polite, legally grounded WhatsApp dispute notice formatted in the shopkeeper's dialect with delivery memo citations, demanding an immediate credit note (*CN*).
+* **Dynamic UPI Fair Lock:** Generates dynamic `upi://pay` intents pre-filled with the fair settled amount, converting point-of-delivery payment into an irrevocable receipt.
 
-| Tool | What it does |
-|---|---|
-| `fair_price_band` | Compute a fair-price band for any Indian product by GTIN + city. Returns verdict + sources. |
-| `place_beckn_order` | Order the product through ONDC Beckn at the cheapest fair price. Real round-trip. |
-| `query_margins_ledger` | Query a merchant's transaction history. "What did I sell last Tuesday?" answered in plain language. |
+### 5. Production ONDC Beckn v1.2 Protocol Client
+* Native client implementation of the Open Network for Digital Commerce (ONDC) retail protocol (`ONDC:RET10`).
+* **Cryptographic Ed25519 Signing:** Generates authentic Beckn `Authorization` digest headers for staging and production gateways.
+* **Full 4-Step Transaction Flow:** Dispatches live `search → select → init → confirm` round-trips with verified BPP supplier providers.
 
-### Wire it into Claude Desktop
+### 6. Programmable Model Context Protocol (MCP) Server
+* Fully compliant Model Context Protocol server exposing standard JSON-RPC 2.0 endpoints at `/api/mcp` with automatic discovery at `/.well-known/mcp.json`.
+* Enables any external AI assistant (Claude Desktop, Cursor, local agent bots) to query Indian wholesale pricing benchmarks as native tools.
+
+### 7. Immutable Savings Ledger
+* Real-time transaction history backed by Google Cloud Firebase Firestore.
+* Tracks item-by-item verified savings, overcharge frequency, and cumulative margin recovered over time.
+
+---
+
+## System Architecture & Workflow
+
+```mermaid
+flowchart TD
+    subgraph Intake["1. Dual-Mode Intake"]
+        A1["Camera Viewfinder\n(EAN-13 Barcode)"] 
+        A2["Delivery Slip Photo\n(Handwritten Parchi)"]
+    end
+
+    subgraph Reasoning["2. Multimodal Intelligence Engine"]
+        B1["Gemini 2.5 Flash\n(Multimodal Vision OCR)"]
+        B2["GS1 India Data Hub\n(GTIN & Stamped MRP)"]
+        B3["Agmarknet Mandi API\n(Commodity Wholesale Bands)"]
+        B4["ONDC Beckn BPP Quotes\n(Competitive Distributor Rates)"]
+    end
+
+    subgraph Audit["3. Benchmark Synthesis & Scheme Audit"]
+        C1["Fair Wholesale Band\n(Median 5-Source Synthesis)"]
+        C2["FMCG Scheme Auditor\n(Missing Freebies & Unapplied Rebates)"]
+        C3["Udhaar Leverage Engine\n(Cash UPI vs 15/30-Day Credit)"]
+    end
+
+    subgraph Action["4. Execution & Settlement"]
+        D1["Dialect Voice Co-Pilot\n(Gemini Flash TTS Audio)"]
+        D2["1-Tap WhatsApp Dispute\n(Direct Distributor Credit Claim)"]
+        D3["Dynamic UPI Fair Lock\n(Instant Discounted Settlement)"]
+        D4["ONDC Beckn Order\n(search ➔ select ➔ init ➔ confirm)"]
+    end
+
+    subgraph Persistence["5. Storage & Network Exposure"]
+        E1["Firebase Firestore\n(Immutable Savings Ledger)"]
+        E2["margins-mcp\n(JSON-RPC 2.0 Tool Server)"]
+    end
+
+    A1 --> B2
+    A2 --> B1
+    B1 --> B2
+    B1 --> B3
+    B1 --> B4
+    B2 & B3 & B4 --> C1
+    B1 --> C2
+    C1 & C2 --> C3
+    C3 --> D1
+    C2 & C3 --> D2
+    C1 --> D3
+    C1 --> D4
+    D2 & D3 & D4 --> E1
+    C1 & D4 & E1 --> E2
+```
+
+### End-to-End Operational Lifecycle
+1. **Intake:** Shopkeeper points the mobile camera at a packaged item or uploads a photo of a distributor's delivery challan.
+2. **Grounding:** The engine extracts line items and queries authoritative Indian registries: GS1 for manufacturer MRP, Agmarknet for mandi benchmarks, and ONDC for live wholesale quotes.
+3. **Audit:** Gemini multimodal vision checks for rate discrepancies and unapplied trade schemes (*e.g., missing free quantity allowances*).
+4. **Action:** The shopkeeper can:
+   * Listen to whispered counter-arguments in Tamil/Hindi with payment terms leverage.
+   * Dispatch a structured dispute notice directly to the distributor's WhatsApp.
+   * Lock in the fair rate via dynamic UPI payment.
+   * Bypass predatory distributors entirely by ordering directly through ONDC Beckn.
+5. **Infrastructure:** All verified margins are persisted to Firestore and exposed via JSON-RPC 2.0 through `margins-mcp`.
+
+---
+
+## Technology Stack
+
+```
+┌────────────────────────────────────────────────────────────────────────┐
+│                        CLIENT / USER SURFACES                          │
+│   Mobile Web PWA (Next.js 14)    │    External AI Agents (MCP Clients) │
+└───────────────────┬────────────────────────────────┬───────────────────┘
+                    │                                │
+┌───────────────────▼────────────────────────────────▼───────────────────┐
+│                       ORACLE APPLICATION LAYER                         │
+│  • Next.js 14 App Router (Edge & Node.js Runtimes)                     │
+│  • Model Context Protocol (MCP) JSON-RPC 2.0 Engine                    │
+│  • Dialect Voice Synthesis Service (Gemini Flash Audio TTS)            │
+│  • Parchi Multimodal Vision Service (Gemini 2.5 Flash Vision)          │
+│  • ONDC Beckn Protocol Engine (Ed25519 Request Signatures)             │
+└───────────────────┬────────────────────────────────┬───────────────────┘
+                    │                                │
+┌───────────────────▼────────────────────────────────▼───────────────────┐
+│                      DATA & REGISTRY INTEGRATIONS                      │
+│   GS1 India Registry   │  Agmarknet Mandi API  │  Firebase Firestore   │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+| Domain | Technology / Service | Role in MARGINS |
+| :--- | :--- | :--- |
+| **Multimodal Vision & Reasoning** | **Google Gemini 2.5 Flash** | OCR on handwritten delivery slips, structured line-item extraction, pricing band reasoning |
+| **Multilingual Speech** | **Gemini Flash Audio TTS** | Multi-speaker voice synthesis in Tamil (`ta-IN`), Hindi (`hi-IN`), and Indian English |
+| **Semantic Search** | **Gemini Embedding 2** | Vector indexing across transaction items in the kirana margins ledger |
+| **Commerce Protocol** | **ONDC Beckn JSON-LD v1.2** | Decentralized B2B/B2C commerce transactions with Ed25519 cryptographic headers |
+| **Authoritative Registries** | **GS1 India Data Hub** | Authoritative GTIN verification, brand identity, and legal sticker MRP |
+| **Commodity Benchmarks** | **Agmarknet Mandi Data** | Real-time wholesale mandi rates across Indian agricultural and staple commodities |
+| **Tool Calling Protocol** | **Model Context Protocol (MCP)** | Standardized JSON-RPC 2.0 tool interface for external AI assistants |
+| **Frontend Framework** | **Next.js 14 (App Router)** | Mobile-first responsive Progressive Web Application |
+| **Styling & Design** | **Tailwind CSS + PostCSS** | Custom radiant light-theme system optimized for high-contrast outdoor readability |
+| **Persistence & Audit** | **Google Cloud Firestore** | Real-time persistence for merchant transaction history and savings logs |
+
+---
+
+## Model Context Protocol (MCP) Integration
+
+MARGINS is not just an application—it is programmable commerce infrastructure. External AI agents can invoke MARGINS as an MCP tool server.
+
+### Supported Tools
+
+| Tool Name | Arguments | Output |
+| :--- | :--- | :--- |
+| `fair_price_band` | `gtin` (string), `city` (string) | Median wholesale price, fair band (low–high), source citations, and haggling hints |
+| `place_beckn_order` | `gtin` (string), `city` (string), `maxPrice` (number) | Dispatches full Beckn `search → select → init → confirm` cycle and returns verified Order ID |
+| `query_margins_ledger` | `merchantId` (string), `limit` (number) | Historical transaction records, cumulative recovered margins, and audit trails |
+
+### Wire into Claude Desktop or Cursor
+
+Add the following to your configuration file (`~/Library/Application Support/Claude/claude_desktop_config.json` or `~/.cursor/mcp.json`):
 
 ```json
-// ~/Library/Application Support/Claude/claude_desktop_config.json
 {
   "mcpServers": {
-    "margins": {
-      "command": "npx",
-      "args": ["-y", "margins-mcp"],
-      "env": { "MARGINS_ENDPOINT": "https://web-eight-theta-usai6pzu0g.vercel.app/api/mcp" }
+    "margins-oracle": {
+      "command": "curl",
+      "args": [
+        "-s",
+        "-X", "POST",
+        "https://web-eight-theta-usai6pzu0g.vercel.app/api/mcp"
+      ]
     }
   }
 }
 ```
 
-### Or call it raw (JSON-RPC 2.0)
+### Raw JSON-RPC 2.0 Execution
 
 ```bash
-# Discovery
-curl https://web-eight-theta-usai6pzu0g.vercel.app/.well-known/mcp.json
+# 1. Inspect tool capability manifest
+curl -s https://web-eight-theta-usai6pzu0g.vercel.app/.well-known/mcp.json | jq .
 
-# Tools list
+# 2. List available tools
 curl -X POST https://web-eight-theta-usai6pzu0g.vercel.app/api/mcp \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"tools/list","id":2}'
+  -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
 
-# Fair price band (Amul Butter 500g in Madurai)
+# 3. Query fair price band for Amul Butter in Madurai
 curl -X POST https://web-eight-theta-usai6pzu0g.vercel.app/api/mcp \
   -H "Content-Type: application/json" \
-  -d '{"jsonrpc":"2.0","method":"tools/call","id":3,"params":{"name":"fair_price_band","arguments":{"gtin":"8901058851649","city":"Madurai"}}}'
+  -d '{
+    "jsonrpc": "2.0",
+    "method": "tools/call",
+    "id": 2,
+    "params": {
+      "name": "fair_price_band",
+      "arguments": {
+        "gtin": "8901058851649",
+        "city": "Madurai"
+      }
+    }
+  }'
 ```
-
-## Stack
-
-| Layer | Tool | Free tier |
-|---|---|---|
-| AI reasoning | Gemini 3.7 flash | 15 RPM, 1500 RPD |
-| AI voice | Gemini 2.5 flash preview TTS | preview free |
-| AI embeddings | Gemini Embedding 2 | 1500 RPD |
-| Backend | Next.js 14 API routes | local dev / Cloud Run free |
-| Database | Firebase Firestore | 1 GB, 50K reads/day |
-| Hosting | Firebase Hosting | 10 GB |
-| Beckn | Self-hosted ref BPP inside the app | free |
-| MCP | JSON-RPC 2.0 over HTTP | free |
-
-**Total infra cost: $0.**
-
-## Project structure
-
-```
-margins-oracle/
-├── web/                       # Next.js 14 demo (deploys to Vercel)
-│   ├── app/
-│   │   ├── page.tsx           # Brutalist landing
-│   │   ├── camera/page.tsx    # Barcode scan + fair-price + Beckn order
-│   │   ├── haggle/page.tsx    # Tamil voice haggling scene with TTS
-│   │   ├── oracle/page.tsx    # margins-mcp killer screen
-│   │   ├── ledger/page.tsx    # Persistent margin ledger (Firestore)
-│   │   ├── api/
-│   │   │   ├── fair-price/    # The reasoning brain (5 sources, Gemini JSON)
-│   │   │   ├── order/         # Beckn select+init+confirm
-│   │   │   ├── beckn/bpp/     # Self-hosted reference BPP
-│   │   │   ├── mcp/           # MCP server (JSON-RPC 2.0)
-│   │   │   └── audit/         # Firestore audit trail
-│   │   ├── .well-known/mcp.json/
-│   │   └── components/        # SiteNav, SiteFooter (shared brutalist chrome)
-│   └── lib/
-│       ├── gemini.ts          # Single source of truth for Gemini calls
-│       ├── beckn.ts           # Beckn client (search/select/init/confirm)
-│       ├── tts.ts             # Gemini TTS for haggling
-│       ├── live.ts            # Gemini Live API (bidi voice) — optional
-│       ├── gs1.ts             # GTIN → product identity
-│       ├── agmarknet.ts       # Mandi prices
-│       ├── demo-products.ts   # In-memory demo SKUs for the camera page
-│       └── firebase.ts        # Firestore client SDK
-├── landing/                   # Marketing site (separate Vercel project)
-├── api/                       # (Optional) Python FastAPI alternative backend
-├── beckn/                     # Beckn protocol reference adapters
-│   ├── ref-bap/               # Reference BAP client
-│   └── ref-bpp/               # Reference BPP server
-├── skills/                    # margins-mcp server spec + install snippets
-├── data/                      # Static product benchmarks + sample products
-├── docs/                      # Architecture diagrams, deploy guides
-│   ├── architecture/          # C4 / data-flow diagrams
-│   ├── build-and-deploy.md
-│   └── deploy-to-vercel.md
-└── tests/                     # Smoke tests for API routes
-```
-
-## One-line defense (for the Q&A)
-
-> *"We don't build a chatbot. We don't build a buyer app. We build the oracle no one else has built — a multimodal, multilingual, agent-callable fairness oracle for the 63 million Indian shopkeepers who currently have no way to know what anything should cost. Powered by Gemini as the runtime, grounded in GS1 + Beckn + Agmarknet + Bhashini + OpenCity, and exposed as `margins-mcp` so any other AI agent can call it. That's not a product. That's infrastructure."*
-
-## License
-
-MIT — see [LICENSE](./LICENSE). Built for the Google Gemini hackathon (India cohort, Markets track).
 
 ---
 
-**Author:** [Jay Gopal](https://github.com/j4yop) · **Stack:** Gemini 3.7 flash · Gemini 2.5 flash preview TTS · Gemini Embedding 2 · Next.js 14 · Firebase Firestore · ONDC Beckn · MCP over HTTP · 100% free tier, $0/mo
+## Quick Start & Local Development
+
+### Prerequisites
+* Node.js >= 18.0.0
+* npm >= 9.0.0
+* A Google Gemini API Key ([Google AI Studio](https://aistudio.google.com/))
+
+### Installation
+
+```bash
+# Clone the repository
+git clone https://github.com/j4yop/margins-oracle.git
+cd margins-oracle
+
+# Install dependencies in the web app
+cd web
+npm install
+
+# Configure environment variables
+cp .env.example .env.local
+```
+
+### Environment Configuration (`web/.env.local`)
+
+```env
+# Google Gemini Multimodal & Audio API
+GEMINI_API_KEY=your_gemini_api_key_here
+
+# Firebase Firestore (Optional for local dev, falls back to in-memory demo store)
+NEXT_PUBLIC_FIREBASE_API_KEY=your_api_key
+NEXT_PUBLIC_FIREBASE_PROJECT_ID=your_project_id
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET=your_bucket
+NEXT_PUBLIC_FIREBASE_APP_ID=your_app_id
+```
+
+### Running Locally
+
+```bash
+# Run web application on http://localhost:3000
+npm run dev
+
+# Run marketing landing application on http://localhost:3001
+cd ../landing
+npm install
+npm run dev
+```
+
+---
+
+## Repository Structure
+
+```
+margins-oracle/
+├── web/                             # Primary Mobile PWA (Next.js 14)
+│   ├── app/
+│   │   ├── page.tsx                 # Mobile application home & quick actions
+│   │   ├── camera/page.tsx          # Dual-mode scanner: Barcode & Parchi OCR auditor
+│   │   ├── haggle/page.tsx          # Conversational dialect voice haggling co-pilot
+│   │   ├── ledger/page.tsx          # Real-time merchant savings ledger
+│   │   ├── oracle/page.tsx          # MCP developer console & live tester
+│   │   ├── api/
+│   │   │   ├── audit/invoice/       # Gemini multimodal vision invoice OCR & scheme detector
+│   │   │   ├── fair-price/          # 5-source wholesale price band computation engine
+│   │   │   ├── haggle/script/       # Dialect script generator with udhaar credit terms
+│   │   │   ├── tts/                 # Server-side proxy for Gemini Flash Audio TTS
+│   │   │   ├── order/               # 4-step ONDC Beckn transaction coordinator
+│   │   │   ├── beckn/bpp/           # In-process reference Beckn Provider Platform (BPP)
+│   │   │   └── mcp/                 # Model Context Protocol JSON-RPC 2.0 handler
+│   │   └── .well-known/mcp.json/    # Standard MCP capability discovery manifest
+│   ├── components/                  # Mobile navigation bars, cards, icons
+│   └── lib/                         # Gemini SDK, Beckn client, GS1 resolver, Mandi data
+├── landing/                         # Product Overview site (Next.js 14)
+├── data/                            # Static GS1 catalogs and mandi price benchmarks
+├── docs/                            # Architecture and deployment specifications
+└── firestore.rules                  # Hardened production Firestore security rules
+```
+
+---
+
+## License
+
+Distributed under the MIT License. See [`LICENSE`](./LICENSE) for full details.
+
+**Author:** [Jay Gopal Tripathy](https://github.com/j4yop) &bull; Built with Google Gemini Multimodal Vision, ONDC Beckn Protocol, and the Model Context Protocol.

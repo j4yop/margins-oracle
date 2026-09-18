@@ -3,7 +3,7 @@
  *
  * Uses the Live API WebSocket endpoint. The full setup requires the
  * official @google/generative-ai SDK with the live connection helpers
- * (or a direct WebSocket). For hackathon scope we use the SDK's
+ * (or a direct WebSocket). For real-time streaming we use the SDK's
  * `live.connect()` pattern.
  *
  * The Live API model for free preview is `gemini-2.0-flash-live-001`

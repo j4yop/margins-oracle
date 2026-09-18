@@ -2,7 +2,7 @@
 
 **Deliberation Date:** 2026-09-17  
 **Session ID:** `council-features-20260917`  
-**Topic:** What high-impact, useful features should be added to MARGINS Oracle to maximize its unfair advantage in the Google Gemini Hackathon (Markets Track) and solve the deepest operational pain points of India's 63M Kirana storekeepers?
+**Topic:** What high-impact, useful features should be added to MARGINS Oracle to maximize its operational advantage and solve the deepest operational pain points of India's 63M Kirana storekeepers?
 
 ---
 

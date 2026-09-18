@@ -111,7 +111,7 @@ export async function POST(req: NextRequest) {
         init: { acks: [init?.message?.ack?.status ?? 'ACK'] },
         confirm: { acks: [conf?.message?.ack?.status ?? 'ACK'] },
       },
-      // Echo the canonical Beckn order so judges can audit
+      // Return the canonical Beckn order audit record
       beckn_order: finalOrder,
     });
   } catch (e) {

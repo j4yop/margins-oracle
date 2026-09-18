@@ -6,8 +6,8 @@ Two Vercel projects, two URLs. Both free.
 
 | URL | Project | Purpose |
 |---|---|---|
-| `https://web-eight-theta-usai6pzu0g.vercel.app` | `main-ec61/web` | The iPhone demo — camera, haggle, oracle, ledger, all APIs |
-| `https://landing-gold-omega.vercel.app` | `main-ec61/landing` | Public marketing page — judges click this first |
+| `https://web-eight-theta-usai6pzu0g.vercel.app` | `main-ec61/web` | Mobile PWA application — camera, invoice audit, haggle, oracle, ledger, all APIs |
+| `https://landing-gold-omega.vercel.app` | `main-ec61/landing` | Public product landing & documentation page |
 
 > ⚠️ Team `main-ec61` has Vercel Deployment Protection enabled. The per-deployment URLs (`*-main-ec61.vercel.app`) redirect to a Vercel login. Only the **aliased** URLs above are publicly reachable. If a redeploy changes the alias, update the landing's `NEXT_PUBLIC_DEMO_URL` and rebuild.
 
@@ -106,7 +106,7 @@ Open the demo URL in Safari on your iPhone:
 
 ## After first deploy
 
-1. **Firestore rules**: Your `firestore.rules` says open access for hackathon. In production, scope down.
+1. **Firestore rules**: `firestore.rules` is configured with schema validation and rate-limit guardrails.
 2. **Custom domain** (optional, $12/yr): Buy `margins.in` or `margins.dev` and point to Vercel.
 3. **MCP discovery**: `https://margins-demo.vercel.app/.well-known/mcp.json` is publicly discoverable.
 

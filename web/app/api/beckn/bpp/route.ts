@@ -1,11 +1,8 @@
 /**
- * /api/beckn/bpp — Reference Beckn Provider (mock)
+ * /api/beckn/bpp — Reference Beckn Provider Platform (BPP)
  *
  * Responds to search/select/init/confirm with canonical Beckn JSON-LD.
- * 3 suppliers per GTIN with different prices. Judges can audit every call here.
- *
- * The hackathon-grade simplification: same BPP for all GTINs but with
- * city-aware pricing variation. Real ONDC has thousands of BPPs.
+ * Simulates multiple suppliers per GTIN with city-aware pricing variation.
  */
 
 import { NextRequest, NextResponse } from 'next/server';

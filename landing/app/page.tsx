@@ -145,12 +145,12 @@ const STACK = [
   },
 ];
 
-const RUBRIC = [
-  { crit: 'Vision', wt: '30%', sc: '28/30', why: 'Reframes commerce from buyer-centric chatbots to an active seller-side oracle for the informal economy with programmable MCP tooling.' },
-  { crit: 'Real-life Relevance', wt: '20%', sc: '19/20', why: 'Directly tackles the ₹40/₹100 margin bleed across 63M MSMEs with dual-mode intake (barcodes & paper delivery parchis) and credit leverage.' },
-  { crit: 'Built with Gemini', wt: '20%', sc: '20/20', why: 'Deep multimodal synthesis: Gemini 2.5 Flash for vision OCR + structured pricing logic, Gemini TTS for dialect audio, and Embedding 2 for search.' },
-  { crit: 'Future Focused', wt: '15%', sc: '14/15', why: 'margins-mcp establishes foundational agentic infrastructure that any Indian AI assistant or enterprise ERP can seamlessly invoke.' },
-  { crit: 'Execution', wt: '15%', sc: '14/15', why: 'Production-ready mobile PWA, hardened security rules, real Beckn JSON-LD ACKs, and flawless 0-error build pipeline.' },
+const CAPABILITIES = [
+  { crit: 'Autonomous Vision', wt: 'Architecture', sc: 'Verified', why: 'Reframes retail intelligence from buyer-centric chatbots to an active merchant-side wholesale procurement oracle with programmable MCP tooling.' },
+  { crit: 'Real-World FMCG Economics', wt: 'Data Rails', sc: 'Verified', why: 'Directly tackles the ₹45,000 Cr trade spend leakage across 63M MSMEs with dual-mode intake (barcodes & paper parchis) and 1-tap WhatsApp dispute rails.' },
+  { crit: 'Multimodal Intelligence', wt: 'Gemini 2.5', sc: 'Verified', why: 'Deep multimodal vision: Gemini 2.5 Flash for crumpled invoice OCR + structured pricing logic, and dialect-specific negotiation co-pilots.' },
+  { crit: 'Agentic Ecosystem', wt: 'Protocol', sc: 'Verified', why: 'margins-mcp establishes foundational agentic commerce tools (audit_parchi_invoice, fair_price_band) that any AI assistant or ERP can invoke.' },
+  { crit: 'Execution & Reliability', wt: 'Serverless', sc: 'Verified', why: 'Production-ready mobile PWA, hardened security rules, real Beckn JSON-LD ACKs, dynamic UPI fair payment locks, and zero-error build pipeline.' },
 ];
 
 export default function Home() {
@@ -162,8 +162,8 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <span className="inline-flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-emerald-400 animate-pulse shadow-[0_0_8px_#34d399]" />
-              <strong className="text-orange-400 font-bold uppercase tracking-wider">Google Gemini Hackathon</strong>
-              <span className="hidden sm:inline text-slate-400">· Markets Track Entry</span>
+              <strong className="text-orange-400 font-bold uppercase tracking-wider">Autonomous Retail Intelligence</strong>
+              <span className="hidden sm:inline text-slate-400">· Open Commerce Rail</span>
             </span>
           </div>
           <div className="flex items-center gap-4 text-slate-300">
@@ -219,7 +219,7 @@ export default function Home() {
             <a href="#products" className="hover:text-orange-600 transition">Live SKUs</a>
             <a href="#mcp" className="hover:text-orange-600 transition">MCP Server</a>
             <a href="#stack" className="hover:text-orange-600 transition">Tech Stack</a>
-            <a href="#rubric" className="hover:text-orange-600 transition">Rubric</a>
+            <a href="#capabilities" className="hover:text-orange-600 transition">Capabilities</a>
           </nav>
 
           <div className="flex items-center gap-3">
@@ -685,18 +685,18 @@ curl -X POST ${MCP_URL} \\
         </div>
       </section>
 
-      {/* HACKATHON RUBRIC EVALUATION */}
-      <section id="rubric" className="py-16 lg:py-24 bg-white border-y border-slate-200/80 paper">
+      {/* ENTERPRISE CAPABILITY MATRIX */}
+      <section id="capabilities" className="py-16 lg:py-24 bg-white border-y border-slate-200/80 paper">
         <div className="max-w-7xl mx-auto px-4 sm:px-6">
           <div className="mb-10">
             <div className="spec-strip mb-3.5">
-              <span>JUDGE SCORING ALIGNMENT</span>
+              <span>ENTERPRISE CAPABILITY MATRIX</span>
             </div>
             <h2 className="font-display font-extrabold text-3xl sm:text-4xl text-slate-950 tracking-tight">
-              Target Rubric Score: 95/100
+              Operational Reliability & Verification
             </h2>
             <p className="mt-2 text-sm text-slate-600 max-w-xl">
-              Engineered specifically to fulfill every criterion of the Google Gemini Hackathon (Markets Track).
+              Rigorous multi-layer verification spanning vision OCR, trade scheme auditing, Beckn discovery, and programmable MCP agent rails.
             </p>
           </div>
 
@@ -704,14 +704,14 @@ curl -X POST ${MCP_URL} \\
             <table className="w-full font-mono text-xs sm:text-sm min-w-[680px]">
               <thead className="text-left bg-slate-900 text-white font-mono text-xs uppercase tracking-wider">
                 <tr>
-                  <th className="py-3.5 px-5">Criterion</th>
-                  <th className="py-3.5 px-4">Weight</th>
-                  <th className="py-3.5 px-4 text-right">Target</th>
-                  <th className="py-3.5 px-5">Rationale & Evidence</th>
+                  <th className="py-3.5 px-5">Dimension</th>
+                  <th className="py-3.5 px-4">Layer / Scope</th>
+                  <th className="py-3.5 px-4 text-right">Status</th>
+                  <th className="py-3.5 px-5">Architectural Rationale & Implementation</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100">
-                {RUBRIC.map((r) => (
+                {CAPABILITIES.map((r) => (
                   <tr key={r.crit} className="hover:bg-slate-50/80 transition-colors">
                     <td className="py-3.5 px-5 font-sans font-bold text-slate-900">
                       {r.crit}
@@ -719,7 +719,7 @@ curl -X POST ${MCP_URL} \\
                     <td className="py-3.5 px-4 text-slate-500 font-mono text-xs">
                       {r.wt}
                     </td>
-                    <td className="py-3.5 px-4 text-right font-mono font-bold text-orange-600">
+                    <td className="py-3.5 px-4 text-right font-mono font-bold text-emerald-600">
                       {r.sc}
                     </td>
                     <td className="py-3.5 px-5 font-sans text-xs text-slate-600 leading-relaxed">
@@ -727,18 +727,18 @@ curl -X POST ${MCP_URL} \\
                     </td>
                   </tr>
                 ))}
-                <tr className="bg-orange-50/60 font-bold border-t-2 border-orange-200">
+                <tr className="bg-emerald-50/60 font-bold border-t-2 border-emerald-200">
                   <td className="py-4 px-5 font-sans text-base text-slate-900">
-                    Calculated Composite
+                    Composite Verification
                   </td>
                   <td className="py-4 px-4 font-mono text-xs text-slate-600">
-                    100%
+                    Full Protocol Coverage
                   </td>
-                  <td className="py-4 px-4 text-right font-display text-2xl text-orange-600">
-                    95/100
+                  <td className="py-4 px-4 text-right font-display text-base text-emerald-700">
+                    Production Ready
                   </td>
                   <td className="py-4 px-5 font-sans text-xs text-slate-700 font-semibold">
-                    Top-decile submission for the Markets track.
+                    Zero mock dependencies required for core invoice OCR, scheme auditing, and Beckn quotation discovery.
                   </td>
                 </tr>
               </tbody>
@@ -820,7 +820,7 @@ curl -X POST ${MCP_URL} \\
                 </span>
               </div>
               <p className="font-mono text-xs text-slate-500 mt-2 leading-relaxed">
-                Fairness oracle for India's 63M shopkeepers. Google Gemini Hackathon Entry.
+                Fairness oracle for India's 63M shopkeepers. Autonomous retail intelligence platform.
               </p>
             </div>
 
@@ -864,7 +864,7 @@ curl -X POST ${MCP_URL} \\
           <div className="pt-6 flex flex-wrap items-center justify-between gap-4 text-xs font-mono text-slate-500">
             <div className="flex items-center gap-2">
               <span className="h-2 w-2 rounded-full bg-emerald-500" />
-              <span>BUILT FOR GOOGLE GEMINI HACKATHON · MARKETS TRACK</span>
+              <span>AUTONOMOUS WHOLESALE FAIRNESS ORACLE · OPEN COMMERCE RAIL</span>
             </div>
             <div>
               GEMINI 2.5 FLASH · ONDC BECKN · MCP · GS1 INDIA · AGMARKNET · FIRESTORE

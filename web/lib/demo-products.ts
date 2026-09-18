@@ -2,9 +2,9 @@
  * lib/demo-products.ts — Pre-cached sample products for the demo.
  *
  * Each entry has the GTIN, product name, expected fair price, and a
- * barcodespider URL judges can scan with their own phone to verify.
+ * barcodespider URL that users can scan to verify barcode data.
  *
- * 3 categories: FMCG, beverages, household — so judges see breadth.
+ * Covers multiple categories: FMCG, beverages, household, and snacks.
  */
 
 export type DemoProduct = {

@@ -66,9 +66,9 @@ npx tsx -e "import('./lib/gemini.ts').then(m => m.smokeTest().then(console.log))
 | Firebase Cloud Functions | 2M invocations/month | Spark plan |
 | Firebase Auth | 50k MAUs | Spark plan |
 | ONDC Beckn | open protocol, free | local |
-| GS1 India dev sandbox | free for hackathon | gs1india.org |
+| GS1 India dev sandbox | developer sandbox | gs1india.org |
 | Agmarknet | public RSS | agmarknet.gov.in |
-| Bhashini | free for hackathon | bhashini.ai |
+| Bhashini | open dev tier | bhashini.ai |
 | OpenCity | public datasets | data.opencity.in |
 
 Total infra: **$0**.

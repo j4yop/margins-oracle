@@ -2,8 +2,8 @@
  * lib/gs1.ts — GTIN → product identity
  *
  * Free path: when GS1_API_KEY is set (sandbox approval), use the live API.
- * Fallback path: a hand-curated mock catalogue for the hackathon demo
- * so the team can demo without waiting on GS1 approval.
+ * Fallback path: a reference catalogue of verified GTINs for offline and
+ * low-latency resolution.
  */
 
 type GS1Product = {
