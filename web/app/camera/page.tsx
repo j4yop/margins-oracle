@@ -134,8 +134,9 @@ export default function CameraPage() {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({ gtin, city, lang }),
       });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      setResult(await r.json());
+      const data = await r.json().catch(() => ({}));
+      if (!r.ok) throw new Error(data.error || `Fair price query failed (${r.status})`);
+      setResult(data);
     } catch (e) {
       setError(String(e));
     } finally {

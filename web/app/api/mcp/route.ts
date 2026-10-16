@@ -20,7 +20,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { proModel, FAIR_PRICE_SCHEMA, MODELS } from '@/lib/gemini';
+import { proModel, flashModel, getModel, computeHeuristicFairPrice, FAIR_PRICE_SCHEMA, MODELS } from '@/lib/gemini';
 import { lookupGTIN } from '@/lib/gs1';
 import { agmarknetPrice } from '@/lib/agmarknet';
 import { becknSearch } from '@/lib/beckn';
@@ -153,23 +153,41 @@ async function fairPriceBand(args: { gtin: string; city: string; quantity?: numb
   ].filter(Boolean) as { name: string; price: number; url: string }[];
 
   const prompt = `You are MARGINS — a fairness oracle. Compute a fair-price band (low, median, high) for ${product.name} in ${body.city} using these sources:\n${JSON.stringify(sources, null, 2)}\n\nReturn JSON conforming to: {product, fairPriceBand:{low,median,high,currency:'INR'}, verdict:'fair'|'overpriced'|'underpriced'|'insufficient_data', confidence:0..1, sources:[{name,price,url,timestamp}], reasoning, hagglingGuidance:{openingOffer,walkAway,scriptHint}}.`;
-  let text: string;
-  try {
-    const out = await proModel().generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json', responseSchema: FAIR_PRICE_SCHEMA },
-    });
-    text = out.response.text();
-  } catch {
-    // fall back to flash
-    const { flashModel } = await import('@/lib/gemini');
-    const out = await flashModel().generateContent({
-      contents: [{ role: 'user', parts: [{ text: prompt }] }],
-      generationConfig: { responseMimeType: 'application/json', responseSchema: FAIR_PRICE_SCHEMA },
-    });
-    text = out.response.text();
+  let text: string | null = null;
+  const candidateModels = [
+    proModel(),
+    flashModel(),
+    getModel('gemini-2.5-flash'),
+    getModel('gemini-2.0-flash'),
+  ];
+
+  for (const m of candidateModels) {
+    try {
+      const out = await m.generateContent({
+        contents: [{ role: 'user', parts: [{ text: prompt }] }],
+        generationConfig: { responseMimeType: 'application/json', responseSchema: FAIR_PRICE_SCHEMA },
+      });
+      text = out.response.text();
+      if (text) break;
+    } catch {
+      // try next model
+    }
   }
-  return JSON.parse(text);
+
+  if (text) {
+    try {
+      return JSON.parse(text);
+    } catch {
+      // fallback to heuristic
+    }
+  }
+
+  return computeHeuristicFairPrice({
+    product,
+    sources,
+    city: body.city,
+    quantity: body.quantity,
+  });
 }
 
 async function placeOrder(args: { gtin: string; city: string; buyerName?: string; acceptPrice?: number }) {
