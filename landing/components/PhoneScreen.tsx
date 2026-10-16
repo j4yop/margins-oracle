@@ -31,7 +31,8 @@ export default function PhoneScreen() {
     <div className="h-full w-full flex flex-col bg-slate-50 text-slate-900 select-none">
       {/* Mode Switcher Tabs */}
       <div className="px-3 pt-1 pb-2 flex items-center gap-1.5 border-b border-slate-200/80 bg-white">
-        <div
+        <button
+          onClick={() => setStep(0)}
           className={`flex-1 py-1 rounded-lg text-[10px] font-mono text-center font-bold transition-all ${
             !isParchi
               ? 'bg-orange-500 text-white shadow-sm'
@@ -39,8 +40,9 @@ export default function PhoneScreen() {
           }`}
         >
           Barcode Scan
-        </div>
-        <div
+        </button>
+        <button
+          onClick={() => setStep(6)}
           className={`flex-1 py-1 rounded-lg text-[10px] font-mono text-center font-bold transition-all ${
             isParchi
               ? 'bg-orange-500 text-white shadow-sm'
@@ -48,7 +50,7 @@ export default function PhoneScreen() {
           }`}
         >
           Parchi (Invoice)
-        </div>
+        </button>
       </div>
 
       {/* Camera / Viewfinder Box */}
