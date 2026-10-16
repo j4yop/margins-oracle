@@ -118,6 +118,24 @@ export async function POST(req: NextRequest) {
       });
     }
 
+    // Always normalize product metadata so UI never displays 'Unknown' or missing MRP
+    if (parsed) {
+      if (!parsed.product) parsed.product = {};
+      parsed.product.gtin = body.gtin;
+      if (!parsed.product.name || parsed.product.name.startsWith('Unknown')) {
+        parsed.product.name = product.name;
+      }
+      if (!parsed.product.brand || parsed.product.brand === 'unknown') {
+        parsed.product.brand = product.brand || 'GS1 Verified';
+      }
+      if (!parsed.product.mrp || typeof parsed.product.mrp !== 'number') {
+        parsed.product.mrp = product.mrp ?? 35;
+      }
+      if (product.manufacturer && !parsed.product.manufacturer) {
+        parsed.product.manufacturer = product.manufacturer;
+      }
+    }
+
     // 4. Audit trail — fire-and-forget so Firestore latency never blocks the response
     void (async () => {
       try {

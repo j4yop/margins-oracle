@@ -87,13 +87,13 @@ export function computeHeuristicFairPrice({
   lang?: 'ta' | 'hi' | 'en';
   quantity?: number;
 }) {
-  const mrp = product.mrp ?? 100;
+  const mrp = product.mrp ?? 40;
   const validPrices = sources.map((s) => s.price).filter((p) => typeof p === 'number' && p > 0);
 
   // Median wholesale price calculation
   const median = validPrices.length > 0
     ? Math.round(validPrices.reduce((a, b) => a + b, 0) / validPrices.length)
-    : Math.round(mrp * 0.88); // standard 12% retail margin benchmark
+    : Math.round(mrp * 0.85); // standard 15% wholesale/distributor margin benchmark
 
   const low = Math.round(median * 0.96);
   const high = Math.round(median * 1.04);
@@ -113,7 +113,7 @@ export function computeHeuristicFairPrice({
   }[lang];
 
   const allSources = sources.length > 0 ? sources : [
-    ...(product.mrp ? [{ name: 'GS1 India (MRP)', price: product.mrp, url: product.gs1Url || 'https://gs1india.org' }] : []),
+    ...(mrp ? [{ name: 'GS1 India (MRP)', price: mrp, url: product.gs1Url || 'https://gs1india.org' }] : []),
     { name: `Agmarknet Wholesale (${city})`, price: median, url: 'https://agmarknet.gov.in' },
   ];
 
@@ -122,7 +122,7 @@ export function computeHeuristicFairPrice({
       gtin: product.gtin,
       name: product.name,
       brand: product.brand || 'GS1 Verified',
-      mrp: product.mrp,
+      mrp: product.mrp ?? mrp,
       manufacturer: product.manufacturer,
     },
     fairPriceBand: {

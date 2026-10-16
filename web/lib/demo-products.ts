@@ -21,6 +21,17 @@ export type DemoProduct = {
 
 export const DEMO_PRODUCTS: DemoProduct[] = [
   {
+    gtin: '8901063139466',
+    name: 'Britannia Bourbon Biscuits 120g',
+    brand: 'Britannia',
+    category: 'Snacks',
+    emoji: '🍫',
+    image: '',
+    expectedBand: [28, 31],
+    city: 'Madurai',
+    story: 'MRP ₹35. High demand choco-crème biscuit. Suppliers try ₹33–34; fair wholesale benchmark is ₹29.',
+  },
+  {
     gtin: '8901058851649',
     name: 'Amul Salted Butter 500g',
     brand: 'Amul',
@@ -54,15 +65,26 @@ export const DEMO_PRODUCTS: DemoProduct[] = [
     story: 'Daily fresh — the price leaks here are small but constant.',
   },
   {
-    gtin: '8901030865728',
+    gtin: '8901057011013',
     name: 'Tata Salt 1kg',
-    brand: 'Tata',
+    brand: 'Tata Salt',
     category: 'Household',
     emoji: '🧂',
     image: '',
-    expectedBand: [22, 27],
+    expectedBand: [22, 26],
     city: 'Delhi',
     story: 'MRP ₹28, but suppliers cluster at ₹25–27. Predictable, easy win.',
+  },
+  {
+    gtin: '8906007280014',
+    name: 'Fortune Sunflower Oil 1L',
+    brand: 'Fortune',
+    category: 'FMCG',
+    emoji: '🌻',
+    image: '',
+    expectedBand: [124, 130],
+    city: 'Chennai',
+    story: 'MRP ₹145. Edible oil mandi benchmark ensures fair margin of ₹18/pouch.',
   },
 ];
 

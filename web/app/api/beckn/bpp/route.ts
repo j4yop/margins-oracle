@@ -6,6 +6,7 @@
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { lookupGTINSync } from '@/lib/gs1';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -46,15 +47,33 @@ const SUPPLIERS: Record<string, { name: string; city: string; margin: number }[]
   ],
 };
 
-// Fair-price baseline (what margin = 0 means) per GTIN
+// Fair-price baseline per GTIN (wholesale rate in INR)
 const FAIR_PRICE: Record<string, number> = {
-  '8901058851649': 252,  // Amul Butter
-  '8901030865278': 95,   // Parle-G
-  '8901058851427': 64,   // Amul Taaza Milk
+  '8901058851649': 252,  // Amul Butter 500g (MRP 280)
+  '8901030865278': 95,   // Parle-G 1kg (MRP 110)
+  '8901030383796': 65,   // Parle-G 800g (MRP 75)
+  '8901058851427': 64,   // Amul Taaza Milk 1L (MRP 70)
+  '8901063139466': 29,   // Britannia Bourbon 120g (MRP 35)
+  '8901063012646': 25,   // Britannia Good Day Butter 100g (MRP 30)
+  '8901063027879': 29,   // Britannia Good Day Cashew 100g (MRP 35)
+  '8901063152526': 29,   // Britannia Marie Gold 250g (MRP 35)
+  '8901057011013': 24,   // Tata Salt 1kg (MRP 28)
+  '8901030865728': 24,   // Tata Salt 1kg (MRP 28)
+  '8901057002011': 208,  // Tata Tea 500g (MRP 240)
+  '8901052002542': 12,   // Maggi 70g (MRP 14)
+  '8901052002573': 48,   // Maggi 4-pack (MRP 56)
+  '8901725131238': 212,  // Aashirvaad Atta 5kg (MRP 245)
+  '8906007280014': 126,  // Fortune Sunflower Oil 1L (MRP 145)
+  '8901012111038': 55,   // Colgate Strong Teeth (MRP 65)
+  '8901362001015': 122,  // Dettol 250ml (MRP 142)
 };
 
 function priceFor(gtin: string, margin: number): number {
-  const base = FAIR_PRICE[gtin] ?? 100;
+  if (FAIR_PRICE[gtin]) {
+    return Math.round(FAIR_PRICE[gtin] * (1 + margin));
+  }
+  const product = lookupGTINSync(gtin);
+  const base = product.mrp ? Math.round(product.mrp * 0.85) : 30;
   return Math.round(base * (1 + margin));
 }
 

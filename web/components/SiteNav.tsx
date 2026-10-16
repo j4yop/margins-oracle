@@ -69,7 +69,7 @@ export default function SiteNav() {
           <div className="flex items-center gap-2">
             <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-emerald-50 border border-emerald-200 text-[11px] font-mono text-emerald-700 font-medium">
               <span className="live-dot-emerald" />
-              <span>Gemini 3.6 Active</span>
+              <span>Gemini 2.5 Active</span>
             </div>
             <Link
               href="/"
