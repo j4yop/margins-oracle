@@ -338,7 +338,7 @@ export default function Home() {
 
             {/* Right Hero Column — Phone Mockup with Radiant Accents */}
             <div className="lg:col-span-5 flex justify-center lg:justify-end">
-              <div className="relative">
+              <div className="relative w-[310px] sm:w-[330px]">
                 {/* Background ambient glow */}
                 <div className="absolute -inset-4 bg-gradient-to-tr from-orange-400/20 to-amber-300/20 rounded-[60px] blur-2xl -z-10" />
 
@@ -347,7 +347,7 @@ export default function Home() {
                 </PhoneMockup>
 
                 {/* Floating Insight Pill 1 (Left) */}
-                <div className="hidden lg:flex absolute -left-28 top-16 slab slab-sm p-3 w-48 rotate-[-3deg] border border-slate-200 shadow-elevated bg-white/95 backdrop-blur items-center gap-3">
+                <div className="hidden xl:flex absolute -left-20 top-16 slab slab-sm p-3 w-44 rotate-[-3deg] border border-slate-200 shadow-elevated bg-white/95 backdrop-blur items-center gap-3">
                   <div className="h-8 w-8 rounded-lg bg-orange-50 border border-orange-200 text-orange-600 flex items-center justify-center shrink-0">
                     <ScanIcon size={16} />
                   </div>
@@ -362,7 +362,7 @@ export default function Home() {
                 </div>
 
                 {/* Floating Insight Pill 2 (Right) */}
-                <div className="hidden lg:flex absolute -right-20 bottom-24 slab slab-sm p-3 w-44 rotate-[3deg] border border-emerald-200 shadow-elevated bg-white/95 backdrop-blur items-center gap-3">
+                <div className="hidden xl:flex absolute -right-16 bottom-24 slab slab-sm p-3 w-40 rotate-[3deg] border border-emerald-200 shadow-elevated bg-white/95 backdrop-blur items-center gap-3">
                   <div className="h-8 w-8 rounded-lg bg-emerald-50 border border-emerald-200 text-emerald-600 flex items-center justify-center shrink-0">
                     <HandshakeIcon size={16} />
                   </div>

@@ -10,13 +10,13 @@ export default function PhoneMockup({
   className?: string;
 }) {
   return (
-    <div className={`relative mx-auto w-full max-w-[330px] ${className}`}>
+    <div className={`relative mx-auto w-[310px] sm:w-[330px] shrink-0 ${className}`}>
       {/* Outer chassis */}
-      <div className="relative aspect-[9/19.2] rounded-[48px] border-[6px] border-slate-850 bg-slate-900 p-[7px] shadow-[0_25px_60px_-15px_rgba(15,23,42,0.35)] ring-1 ring-slate-700/60">
+      <div className="relative h-[610px] sm:h-[630px] w-full rounded-[48px] border-[6px] border-slate-900 bg-slate-900 p-[6px] shadow-[0_25px_60px_-15px_rgba(15,23,42,0.35)] ring-1 ring-slate-700/60">
         {/* Screen Bezel */}
         <div className="relative h-full w-full rounded-[40px] border border-slate-200/60 bg-white overflow-hidden">
           {/* Dynamic Island */}
-          <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-30 h-5 w-26 rounded-full bg-slate-950 flex items-center justify-end px-3 ring-1 ring-slate-800/80">
+          <div className="absolute top-2.5 left-1/2 -translate-x-1/2 z-30 h-5 w-28 rounded-full bg-slate-950 flex items-center justify-end px-3 ring-1 ring-slate-800/80">
             <div className="h-2.5 w-2.5 rounded-full bg-slate-900 border border-slate-700/50 flex items-center justify-center">
               <div className="h-1 w-1 rounded-full bg-sky-500/40" />
             </div>
