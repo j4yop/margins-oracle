@@ -23,9 +23,9 @@ import {
   ScanIcon,
 } from '@/components/Icons';
 
-const DEMO_URL = 'https://web-eight-theta-usai6pzu0g.vercel.app';
+const DEMO_URL = process.env.NEXT_PUBLIC_DEMO_URL || 'https://margins-oracle-web.vercel.app';
 const REPO_URL = 'https://github.com/j4yop/margins-oracle';
-const MCP_URL = 'https://web-eight-theta-usai6pzu0g.vercel.app/api/mcp';
+const MCP_URL = process.env.NEXT_PUBLIC_MCP_URL || 'https://margins-oracle-web.vercel.app/api/mcp';
 const DISCOVERY_URL = `${DEMO_URL}/.well-known/mcp.json`;
 
 const TICKER = [

@@ -2,21 +2,21 @@
 
 > **Reclaiming the ₹40 of every ₹100 lost by India's 63 million shopkeepers to pricing asymmetry, unapplied manufacturer promotions, and informal distributor locks.**
 
-[![Production App](https://img.shields.io/badge/Production%20App-Live-emerald?style=flat-square)](https://web-eight-theta-usai6pzu0g.vercel.app)
-[![Landing Site](https://img.shields.io/badge/Product%20Overview-Live-orange?style=flat-square)](https://landing-gold-omega.vercel.app)
-[![MCP Protocol](https://img.shields.io/badge/MCP%20Server-JSON--RPC%202.0-indigo?style=flat-square)](https://web-eight-theta-usai6pzu0g.vercel.app/api/mcp)
+[![Production App](https://img.shields.io/badge/Production%20App-Live-emerald?style=flat-square)](https://margins-oracle-web.vercel.app)
+[![Landing Site](https://img.shields.io/badge/Product%20Overview-Live-orange?style=flat-square)](https://margins-oracle.vercel.app)
+[![MCP Protocol](https://img.shields.io/badge/MCP%20Server-JSON--RPC%202.0-indigo?style=flat-square)](https://margins-oracle-web.vercel.app/api/mcp)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg?style=flat-square)](./LICENSE)
 
 ---
 
 ## Live Deployments
 
-| Surface | URL | Description |
-| :--- | :--- | :--- |
-| **Mobile Web Application** | [web-eight-theta-usai6pzu0g.vercel.app](https://web-eight-theta-usai6pzu0g.vercel.app) | Mobile-first shopkeeper PWA (`/camera`, `/haggle`, `/ledger`, `/oracle`) |
-| **Product Overview** | [landing-gold-omega.vercel.app](https://landing-gold-omega.vercel.app) | Architectural showcase and interactive product tour |
-| **MCP Server Endpoint** | [web-eight-theta-usai6pzu0g.vercel.app/api/mcp](https://web-eight-theta-usai6pzu0g.vercel.app/api/mcp) | Standard JSON-RPC 2.0 Model Context Protocol endpoint |
-| **MCP Discovery Manifest** | [web-eight-theta-usai6pzu0g.vercel.app/.well-known/mcp.json](https://web-eight-theta-usai6pzu0g.vercel.app/.well-known/mcp.json) | Machine-readable capability and tool schema manifest |
+| Surface | URL | Mirror | Description |
+| :--- | :--- | :--- | :--- |
+| **Product Overview (Landing)** | [margins-oracle.vercel.app](https://margins-oracle.vercel.app) | [landing-gold-omega.vercel.app](https://landing-gold-omega.vercel.app) | Architectural showcase and interactive product tour |
+| **Mobile Web Application** | [margins-oracle-web.vercel.app](https://margins-oracle-web.vercel.app) | [web-eight-theta-usai6pzu0g.vercel.app](https://web-eight-theta-usai6pzu0g.vercel.app) | Mobile-first shopkeeper PWA (`/camera`, `/haggle`, `/ledger`, `/oracle`) |
+| **MCP Server Endpoint** | [margins-oracle-web.vercel.app/api/mcp](https://margins-oracle-web.vercel.app/api/mcp) | — | Standard JSON-RPC 2.0 Model Context Protocol endpoint |
+| **MCP Discovery Manifest** | [margins-oracle-web.vercel.app/.well-known/mcp.json](https://margins-oracle-web.vercel.app/.well-known/mcp.json) | — | Machine-readable capability and tool schema manifest |
 
 ---
 
@@ -218,7 +218,7 @@ Add the following to your configuration file (`~/Library/Application Support/Cla
       "args": [
         "-s",
         "-X", "POST",
-        "https://web-eight-theta-usai6pzu0g.vercel.app/api/mcp"
+        "https://margins-oracle-web.vercel.app/api/mcp"
       ]
     }
   }
@@ -229,15 +229,15 @@ Add the following to your configuration file (`~/Library/Application Support/Cla
 
 ```bash
 # 1. Inspect tool capability manifest
-curl -s https://web-eight-theta-usai6pzu0g.vercel.app/.well-known/mcp.json | jq .
+curl -s https://margins-oracle-web.vercel.app/.well-known/mcp.json | jq .
 
 # 2. List available tools
-curl -X POST https://web-eight-theta-usai6pzu0g.vercel.app/api/mcp \
+curl -X POST https://margins-oracle-web.vercel.app/api/mcp \
   -H "Content-Type: application/json" \
   -d '{"jsonrpc": "2.0", "method": "tools/list", "id": 1}'
 
 # 3. Query fair price band for Amul Butter in Madurai
-curl -X POST https://web-eight-theta-usai6pzu0g.vercel.app/api/mcp \
+curl -X POST https://margins-oracle-web.vercel.app/api/mcp \
   -H "Content-Type: application/json" \
   -d '{
     "jsonrpc": "2.0",

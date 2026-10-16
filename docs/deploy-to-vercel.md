@@ -4,10 +4,10 @@ Two Vercel projects, two URLs. Both free.
 
 **Current live deployments (team `main-ec61`, account `jay20gopal-5543`):**
 
-| URL | Project | Purpose |
-|---|---|---|
-| `https://web-eight-theta-usai6pzu0g.vercel.app` | `main-ec61/web` | Mobile PWA application — camera, invoice audit, haggle, oracle, ledger, all APIs |
-| `https://landing-gold-omega.vercel.app` | `main-ec61/landing` | Public product landing & documentation page |
+| URL | Mirror | Project | Purpose |
+|---|---|---|---|
+| `https://margins-oracle-web.vercel.app` | `https://web-eight-theta-usai6pzu0g.vercel.app` | `main-ec61/margins-oracle-web` | Mobile PWA application — camera, invoice audit, haggle, oracle, ledger, all APIs |
+| `https://margins-oracle.vercel.app` | `https://landing-gold-omega.vercel.app` | `main-ec61/margins-oracle` | Public product landing & documentation page |
 
 > ⚠️ Team `main-ec61` has Vercel Deployment Protection enabled. The per-deployment URLs (`*-main-ec61.vercel.app`) redirect to a Vercel login. Only the **aliased** URLs above are publicly reachable. If a redeploy changes the alias, update the landing's `NEXT_PUBLIC_DEMO_URL` and rebuild.
 

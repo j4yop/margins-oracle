@@ -16,8 +16,8 @@
 ### 1.2 Technical Architecture & Codebase Evidence (Verified Facts)
 1. **Frontend Surface (`web/` & `landing/`):**
    - Built on **Next.js 14 (App Router)** with TypeScript, Tailwind CSS, and brutalist design language.
-   - Separate landing page app (`landing/`) deployed on Vercel (`landing-gold-omega.vercel.app`) with interactive product demos, architecture breakdown, and phone mockups.
-   - Demo web app (`web/`) deployed at `web-eight-theta-usai6pzu0g.vercel.app`.
+   - Separate landing page app (`landing/`) deployed on Vercel at `margins-oracle.vercel.app` (mirror: `landing-gold-omega.vercel.app`) with interactive product demos, architecture breakdown, and phone mockups.
+   - Demo web app (`web/`) deployed at `margins-oracle-web.vercel.app` (mirror: `web-eight-theta-usai6pzu0g.vercel.app`).
    - Core interactive routes: `/` (Brutalist landing), `/camera` (WebRTC camera stream + BarcodeDetector API + demo SKU picker), `/haggle` (7-step negotiation scene with audio playback), `/ledger` (Firestore transaction tracking and aggregate savings), and `/oracle` (MCP server documentation, live JSON-RPC test harness, and Claude Desktop configuration).
 2. **AI & Gemini Integration (`web/lib/gemini.ts`, `web/lib/tts.ts`, `web/lib/live.ts`):**
    - Uses `@google/generative-ai` SDK (`v0.21.0`).
