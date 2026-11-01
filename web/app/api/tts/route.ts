@@ -1,11 +1,15 @@
 /**
  * /api/tts — Secure Server-Side Gemini Text-to-Speech Proxy
  *
- * Keeps GEMINI_API_KEY strictly on the server (no NEXT_PUBLIC_ exposure in client JS).
- * Proxies speech synthesis to Gemini 2.5 Flash Preview TTS.
+ * Keeps GEMINI_API_KEY strictly on the server (no NEXT_PUBLIC_ exposure in
+ * client JS). Proxies speech synthesis to Gemini 2.5 Flash Preview TTS.
+ *
+ * Post-audit: per-IP rate limit (audio synthesis is quota-expensive) and
+ * control-character stripping on the spoken text.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
+import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
 import { z } from 'zod';
 
 export const runtime = 'nodejs';
@@ -20,24 +24,39 @@ const InputSchema = z.object({
 });
 
 export async function POST(req: NextRequest) {
+  const rl = rateLimit(req, 'tts', 15);
+  if (!rl.ok) return tooManyRequests(rl);
+
+  let body: z.infer<typeof InputSchema>;
   try {
-    const body = InputSchema.parse(await req.json());
-    const apiKey = process.env.GEMINI_API_KEY || process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-
-    if (!apiKey || apiKey === 'STUB') {
-      return NextResponse.json(
-        { error: 'GEMINI_API_KEY is not configured on the server.' },
-        { status: 503 }
-      );
+    body = InputSchema.parse(await req.json());
+  } catch (error) {
+    if (error instanceof z.ZodError) {
+      return NextResponse.json({ error: 'invalid_input', issues: error.issues }, { status: 400 });
     }
+    return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
+  }
 
+  // Strip control characters from spoken text (prompt-hygiene)
+  // eslint-disable-next-line no-control-regex
+  const cleanText = body.text.replace(/[\u0000-\u001f\u007f]/g, ' ').slice(0, 1000);
+
+  const apiKey = process.env.GEMINI_API_KEY;
+  if (!apiKey || apiKey === 'STUB') {
+    return NextResponse.json(
+      { error: 'GEMINI_API_KEY is not configured on the server.' },
+      { status: 503 }
+    );
+  }
+
+  try {
     const response = await fetch(
-      `https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${apiKey}`,
+      `https://generativelanguage.googleapis.com/v1beta/models/${TTS_MODEL}:generateContent?key=${encodeURIComponent(apiKey)}`,
       {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          contents: [{ role: 'user', parts: [{ text: body.text }] }],
+          contents: [{ role: 'user', parts: [{ text: cleanText }] }],
           generationConfig: {
             responseModalities: ['AUDIO'],
             speechConfig: {
@@ -46,13 +65,14 @@ export async function POST(req: NextRequest) {
             },
           },
         }),
+        signal: AbortSignal.timeout(20_000),
       }
     );
 
     if (!response.ok) {
       const errText = await response.text().catch(() => '');
       return NextResponse.json(
-        { error: `Gemini TTS API responded with ${response.status}: ${errText}` },
+        { error: `Gemini TTS API responded with ${response.status}: ${errText.slice(0, 200)}` },
         { status: response.status }
       );
     }
@@ -74,9 +94,6 @@ export async function POST(req: NextRequest) {
       lang: body.lang,
     });
   } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: 'invalid_input', issues: error.issues }, { status: 400 });
-    }
-    return NextResponse.json({ error: String(error) }, { status: 500 });
+    return NextResponse.json({ error: String(error).slice(0, 200) }, { status: 500 });
   }
 }

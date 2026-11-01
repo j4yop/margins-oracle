@@ -16,6 +16,12 @@
  *
  * We also serve /.well-known/mcp.json for discovery.
  *
+ * Security (post-audit):
+ *  - Optional bearer auth: set MCP_ACCESS_TOKEN and tools/call requires
+ *    `Authorization: Bearer <token>` (tools/list + initialize stay open for
+ *    discovery). Unset = open with per-IP rate limits.
+ *  - GTIN checksum validation inside tools; per-IP rate limit per method.
+ *
  * Reference: https://modelcontextprotocol.io/
  */
 
@@ -23,7 +29,12 @@ import { NextRequest, NextResponse } from 'next/server';
 import { proModel, flashModel, getModel, computeHeuristicFairPrice, FAIR_PRICE_SCHEMA, MODELS } from '@/lib/gemini';
 import { lookupGTIN } from '@/lib/gs1';
 import { agmarknetPrice } from '@/lib/agmarknet';
-import { becknSearch } from '@/lib/beckn';
+import { becknSearch, becknSelect, becknInit, becknConfirm } from '@/lib/beckn';
+import { isValidGTIN } from '@/lib/gtin';
+import { sanitizeCity, sanitizePromptText, PROMPT_GUARD } from '@/lib/prompt-guard';
+import { canonicalCityName } from '@/lib/cities';
+import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
+import { adminQueryTransactions } from '@/lib/firestore-write';
 import { ZodError, z } from 'zod';
 
 export const runtime = 'nodejs';
@@ -73,33 +84,51 @@ const QUERY_LEDGER_TOOL = {
 
 const TOOLS = [FAIR_PRICE_TOOL, PLACE_ORDER_TOOL, QUERY_LEDGER_TOOL];
 
+function authorized(req: NextRequest): boolean {
+  const token = process.env.MCP_ACCESS_TOKEN;
+  if (!token) return true; // open mode (rate-limited)
+  return (req.headers.get('authorization') ?? '') === `Bearer ${token}`;
+}
+
+function rpcError(id: unknown, code: number, message: string) {
+  return NextResponse.json({ jsonrpc: '2.0', id, error: { code, message } });
+}
+
 export async function POST(req: NextRequest) {
   let body: any;
   try {
     body = await req.json();
   } catch {
-    return NextResponse.json({ jsonrpc: '2.0', error: { code: -32700, message: 'parse error' }, id: null });
+    return rpcError(null, -32700, 'parse error');
   }
 
   const { jsonrpc = '2.0', method, params, id } = body ?? {};
 
   if (method === 'tools/list') {
+    const rl = rateLimit(req, 'mcp-list', 60);
+    if (!rl.ok) return tooManyRequests(rl);
     return NextResponse.json({ jsonrpc, id, result: { tools: TOOLS } });
   }
 
   if (method === 'tools/call') {
+    if (!authorized(req)) {
+      return rpcError(id, -32001, 'unauthorized: set MCP_ACCESS_TOKEN and send Authorization: Bearer');
+    }
+    const rl = rateLimit(req, 'mcp-call', 30);
+    if (!rl.ok) return tooManyRequests(rl);
+
     const toolName = params?.name;
     const args = params?.arguments ?? {};
     try {
       let result: any;
       if (toolName === 'fair_price_band') {
-        result = await fairPriceBand(args);
+        result = await fairPriceBand(args, req);
       } else if (toolName === 'place_beckn_order') {
-        result = await placeOrder(args);
+        result = await placeOrder(args, req);
       } else if (toolName === 'query_margins_ledger') {
         result = await queryLedger(args);
       } else {
-        return NextResponse.json({ jsonrpc, id, error: { code: -32602, message: `unknown tool: ${toolName}` } });
+        return rpcError(id, -32602, `unknown tool: ${toolName}`);
       }
       return NextResponse.json({
         jsonrpc,
@@ -107,7 +136,13 @@ export async function POST(req: NextRequest) {
         result: { content: [{ type: 'text', text: JSON.stringify(result, null, 2) }] },
       });
     } catch (e) {
-      return NextResponse.json({ jsonrpc, id, error: { code: -32000, message: String(e) } });
+      if (e instanceof McpInputError) {
+        return rpcError(id, -32602, e.message);
+      }
+      if (e instanceof ZodError) {
+        return rpcError(id, -32602, 'invalid tool arguments');
+      }
+      return rpcError(id, -32000, String(e).slice(0, 300));
     }
   }
 
@@ -117,49 +152,66 @@ export async function POST(req: NextRequest) {
       id,
       result: {
         protocolVersion: '2025-06-18',
-        serverInfo: { name: 'margins-mcp', version: '0.1.0' },
+        serverInfo: { name: 'margins-mcp', version: '0.2.0' },
         capabilities: { tools: {} },
       },
     });
   }
 
-  return NextResponse.json({ jsonrpc, id, error: { code: -32601, message: `unknown method: ${method}` } });
+  return rpcError(id, -32601, `unknown method: ${method}`);
 }
 
 export async function GET() {
   return NextResponse.json({
     name: 'margins-mcp',
-    version: '0.1.0',
+    version: '0.2.0',
     description: 'Fairness oracle for Indian commerce. Exposes fair_price_band, place_beckn_order, query_margins_ledger as MCP tools.',
     transport: 'http',
     endpoint: '/api/mcp',
+    authentication: process.env.MCP_ACCESS_TOKEN ? 'bearer (MCP_ACCESS_TOKEN configured)' : 'open (rate-limited)',
     tools: TOOLS,
   });
 }
 
-async function fairPriceBand(args: { gtin: string; city: string; quantity?: number }) {
-  const schema = z.object({ gtin: z.string().min(8), city: z.string(), quantity: z.number().default(1) });
+class McpInputError extends Error {}
+
+async function fairPriceBand(args: { gtin: string; city: string; quantity?: number }, req: NextRequest) {
+  const schema = z.object({ gtin: z.string().min(8).max(20), city: z.string().min(2).max(64), quantity: z.number().int().min(1).max(1000).default(1) });
   const body = schema.parse(args);
+  if (!isValidGTIN(body.gtin)) {
+    throw new McpInputError('invalid gtin: failed GS1 mod-10 check-digit validation');
+  }
+  const safeCity = sanitizeCity(body.city);
+  const city = safeCity.length >= 2 ? canonicalCityName(safeCity) : 'India';
+
   const product = await lookupGTIN(body.gtin);
   const [mandiPx, becknRes] = await Promise.allSettled([
-    agmarknetPrice({ gtin: body.gtin, city: body.city }),
-    becknSearch({ gtin: body.gtin, city: body.city, quantity: body.quantity }),
+    agmarknetPrice({ gtin: body.gtin, city }),
+    becknSearch({ gtin: body.gtin, city, quantity: body.quantity, bapUri: requestOrigin(req) }),
   ]);
+  const mandi = mandiPx.status === 'fulfilled' ? mandiPx.value : null;
   const becknQuotes = becknRes.status === 'fulfilled' ? becknRes.value.quotes : [];
   const sources = [
     ...(product.mrp ? [{ name: 'GS1 India (MRP)', price: product.mrp, url: product.gs1Url }] : []),
-    mandiPx.status === 'fulfilled' && mandiPx.value ? { name: 'Agmarknet (mandi)', price: mandiPx.value.price, url: mandiPx.value.url } : null,
+    mandi
+      ? {
+          name: mandi.source === 'agmarknet-datagov' ? 'Agmarknet via data.gov.in (mandi)' : 'Wholesale model estimate (MRP × factor)',
+          price: mandi.price,
+          url: mandi.url,
+        }
+      : null,
     ...becknQuotes.map((q) => ({ name: `ONDC Beckn — ${q.provider}`, price: q.price, url: q.url })),
   ].filter(Boolean) as { name: string; price: number; url: string }[];
 
-  const prompt = `You are MARGINS — a fairness oracle. Compute a fair-price band (low, median, high) for ${product.name} in ${body.city} using these sources:\n${JSON.stringify(sources, null, 2)}\n\nReturn JSON conforming to: {product, fairPriceBand:{low,median,high,currency:'INR'}, verdict:'fair'|'overpriced'|'underpriced'|'insufficient_data', confidence:0..1, sources:[{name,price,url,timestamp}], reasoning, hagglingGuidance:{openingOffer,walkAway,scriptHint}}.`;
+  const prompt = `You are MARGINS — a fairness oracle.
+${PROMPT_GUARD}
+Compute a fair-price band (low, median, high) for ${sanitizePromptText(product.name, 120)} in ${sanitizePromptText(city, 64)} using these sources:
+${JSON.stringify(sources, null, 2)}
+
+Return JSON conforming to: {product, fairPriceBand:{low,median,high,currency:'INR'}, verdict:'fair'|'overpriced'|'underpriced'|'insufficient_data', confidence:0..1, sources:[{name,price,url,timestamp}], reasoning, hagglingGuidance:{openingOffer,walkAway,scriptHint}}.`;
+
   let text: string | null = null;
-  const candidateModels = [
-    proModel(),
-    flashModel(),
-    getModel('gemini-2.5-flash'),
-    getModel('gemini-2.0-flash'),
-  ];
+  const candidateModels = [proModel(), flashModel(), getModel('gemini-2.5-flash'), getModel('gemini-2.0-flash')];
 
   for (const m of candidateModels) {
     try {
@@ -182,42 +234,55 @@ async function fairPriceBand(args: { gtin: string; city: string; quantity?: numb
     }
   }
 
-  return computeHeuristicFairPrice({
-    product,
-    sources,
-    city: body.city,
-    quantity: body.quantity,
-  });
+  return computeHeuristicFairPrice({ product, sources, city, quantity: body.quantity });
 }
 
-async function placeOrder(args: { gtin: string; city: string; buyerName?: string; acceptPrice?: number }) {
-  const { becknSearch: bs, becknSelect, becknInit, becknConfirm } = await import('@/lib/beckn');
-  const search = await bs({ gtin: args.gtin, city: args.city });
+async function placeOrder(args: { gtin: string; city: string; buyerName?: string; acceptPrice?: number }, req: NextRequest) {
+  const schema = z.object({
+    gtin: z.string().min(8).max(20),
+    city: z.string().min(2).max(64),
+    buyerName: z.string().min(1).max(80).optional(),
+    acceptPrice: z.number().min(0).max(1_000_000).optional(),
+  });
+  const a = schema.parse(args);
+  if (!isValidGTIN(a.gtin)) {
+    throw new McpInputError('invalid gtin: failed GS1 mod-10 check-digit validation');
+  }
+  const safeCity = sanitizeCity(a.city);
+  const city = safeCity.length >= 2 ? canonicalCityName(safeCity) : 'Madurai';
+  const buyerName = sanitizePromptText(a.buyerName ?? 'MARGINS caller', 80);
+  const bapUri = requestOrigin(req);
+
+  const search = await becknSearch({ gtin: a.gtin, city, bapUri });
   if (search.quotes.length === 0) throw new Error('no suppliers');
-  const chosen = [...search.quotes].sort((a, b) => a.price - b.price)[0];
-  if (args.acceptPrice && chosen.price > args.acceptPrice) {
-    return { error: 'price_too_high', cheapest: chosen.price, yourMax: args.acceptPrice };
+  const chosen = [...search.quotes].sort((x, y) => x.price - y.price)[0];
+  if (a.acceptPrice && chosen.price > a.acceptPrice) {
+    return { error: 'price_too_high', cheapest: chosen.price, yourMax: a.acceptPrice };
   }
   const txId = chosen.transactionId;
-  await becknSelect({ txId, providerId: chosen.providerId, itemId: chosen.itemId, city: args.city });
-  await becknInit({ txId, providerId: chosen.providerId, itemId: chosen.itemId, city: args.city, buyerName: args.buyerName ?? 'MARGINS caller', address: 'MARGINS MCP caller address' });
-  const conf = await becknConfirm({ txId, providerId: chosen.providerId, itemId: chosen.itemId, city: args.city, buyerName: args.buyerName ?? 'MARGINS caller', address: 'MARGINS MCP caller address' });
+  await becknSelect({ txId, providerId: chosen.providerId, itemId: chosen.itemId, city, bapUri });
+  await becknInit({ txId, providerId: chosen.providerId, itemId: chosen.itemId, city, buyerName, address: 'MARGINS MCP caller address', bapUri });
+  const conf = await becknConfirm({ txId, providerId: chosen.providerId, itemId: chosen.itemId, city, buyerName, address: 'MARGINS MCP caller address', amount: chosen.price, bapUri });
   return { orderId: conf?.message?.order?.id, provider: chosen.provider, price: chosen.price, state: conf?.message?.order?.state };
 }
 
 async function queryLedger(args: { merchantId: string; limit?: number }) {
-  try {
-    const { db } = await import('@/lib/firebase');
-    const { collection, getDocs, query, where, orderBy, limit: qLimit } = await import('firebase/firestore');
-    const q = query(
-      collection(db, 'transactions'),
-      where('merchantId', '==', args.merchantId),
-      orderBy('timestamp', 'desc'),
-      qLimit(args.limit ?? 10),
-    );
-    const snap = await getDocs(q);
-    return snap.docs.map((d) => d.data());
-  } catch (e) {
-    return { error: String(e), note: 'Firestore unreachable' };
-  }
+  const schema = z.object({ merchantId: z.string().min(1).max(80), limit: z.number().int().min(1).max(50).default(10) });
+  const a = schema.parse(args);
+  const merchantId = sanitizePromptText(a.merchantId, 80);
+
+  const adminRows = await adminQueryTransactions(merchantId, a.limit);
+  if (adminRows) return adminRows;
+
+  return {
+    error: 'ledger_unavailable',
+    note: 'Server-side ledger reads require FIREBASE_SERVICE_ACCOUNT_KEY (Admin SDK). Anonymous client reads are blocked by the hardened Firestore rules by design.',
+    merchantId,
+  };
+}
+
+function requestOrigin(req: NextRequest): string {
+  const proto = req.headers.get('x-forwarded-proto') ?? 'http';
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
+  return host ? `${proto}://${host}` : (process.env.APP_URL ?? '');
 }

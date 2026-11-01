@@ -48,10 +48,12 @@ npx tsx -e "import('./lib/gemini.ts').then(m => m.smokeTest().then(console.log))
 - [ ] AI Studio key created — https://aistudio.google.com/
 - [ ] Firebase project created — https://console.firebase.google.com/
 - [ ] Firebase web app registered, config pasted into `web/.env.local`
-- [ ] Firestore enabled (test mode, asia-south1)
+- [ ] Firebase **Anonymous auth provider enabled** (Authentication → Sign-in method)
+- [ ] Firestore enabled (asia-south1), hardened `firestore.rules` deployed
+- [ ] (recommended) Service account JSON → `FIREBASE_SERVICE_ACCOUNT_KEY`
 - [ ] GitHub repo created — https://github.com/new
 - [ ] GS1 India developer signup — https://www.gs1india.org/ (1-2 day approval)
-- [ ] (optional) Bhashini API key — https://bhashini.ai/
+- [ ] (optional) data.gov.in API key — https://data.gov.in/ (live mandi benchmarks)
 
 ## What's free vs paid
 

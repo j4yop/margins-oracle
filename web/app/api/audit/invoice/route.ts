@@ -2,22 +2,34 @@
  * /api/audit/invoice — Multimodal Delivery Invoice (Parchi) Auditor
  *
  * Accepts a photo/scan of a wholesale paper delivery memo / invoice (parchi).
- * Uses Gemini Multimodal Vision (proModel / flashModel) to extract all line items,
- * quantities, quoted rates, and audit them against GS1 MRP and Mandi benchmarks.
- * Flags overcharged items in real time before the shopkeeper signs the challan.
+ * Uses Gemini Multimodal Vision to extract all line items, quantities, quoted
+ * rates, and audit them against the wholesale benchmark model. Flags
+ * overcharged items in real time before the shopkeeper signs the challan.
+ *
+ * Security (post-audit):
+ *  - image payload capped at ~4 MB decoded (before it reaches Gemini)
+ *  - MIME whitelist (jpeg/png/webp/heic) — default 'image/jpeg' honored
+ *  - city is sanitized before prompt interpolation + model guard appended
+ *  - per-IP rate limit (vision calls are the most expensive in the app)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { proModel, flashModel, MODELS } from '@/lib/gemini';
+import { sanitizeCity, sanitizePromptText, PROMPT_GUARD } from '@/lib/prompt-guard';
+import { canonicalCityName } from '@/lib/cities';
+import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
 import { z } from 'zod';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const MAX_IMAGE_BYTES = 4 * 1024 * 1024; // 4 MB decoded
+const ALLOWED_MIME = new Set(['image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif']);
+
 const InputSchema = z.object({
-  imageBase64: z.string().optional(),
+  imageBase64: z.string().max(7_000_000).optional(), // ~4MB decoded + data-url overhead
   mimeType: z.string().default('image/jpeg'),
-  city: z.string().default('Madurai'),
+  city: z.string().min(2).max(64).default('Madurai'),
   useSample: z.boolean().default(false),
 });
 
@@ -107,19 +119,53 @@ const SAMPLE_INVOICE_AUDIT = {
 };
 
 export async function POST(req: NextRequest) {
+  const rl = rateLimit(req, 'invoice', 6);
+  if (!rl.ok) return tooManyRequests(rl);
+
+  let body: z.infer<typeof InputSchema>;
   try {
-    const body = InputSchema.parse(await req.json());
-
-    // If explicit sample requested or no image provided, return grounded sample audit
-    if (body.useSample || !body.imageBase64) {
-      return NextResponse.json(SAMPLE_INVOICE_AUDIT);
+    body = InputSchema.parse(await req.json());
+  } catch (e) {
+    if (e instanceof z.ZodError) {
+      return NextResponse.json({ error: 'invalid_input', details: e.issues }, { status: 400 });
     }
+    return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
+  }
 
-    // Clean image data string
-    const base64Data = body.imageBase64.replace(/^data:image\/\w+;base64,/, '');
+  // If explicit sample requested or no image provided, return grounded sample audit
+  if (body.useSample || !body.imageBase64) {
+    return NextResponse.json(SAMPLE_INVOICE_AUDIT);
+  }
 
-    const prompt = `You are MARGINS — the wholesale pricing oracle for Indian shopkeepers.
-Analyze this image of a wholesale delivery invoice/memo (parchi) received at a kirana store in ${body.city}.
+  // MIME whitelist
+  const mimeType = ALLOWED_MIME.has(body.mimeType) ? body.mimeType : null;
+  if (!mimeType) {
+    return NextResponse.json(
+      { error: 'unsupported_media_type', message: `Allowed: ${[...ALLOWED_MIME].join(', ')}` },
+      { status: 415 },
+    );
+  }
+
+  // Strip data URL prefix, then enforce decoded size cap
+  const base64Data = body.imageBase64.replace(/^data:image\/\w+;base64,/, '');
+  const decodedBytes = Math.floor((base64Data.length * 3) / 4);
+  if (decodedBytes > MAX_IMAGE_BYTES) {
+    return NextResponse.json(
+      { error: 'image_too_large', message: `Image exceeds ${MAX_IMAGE_BYTES / (1024 * 1024)} MB decoded limit.` },
+      { status: 413 },
+    );
+  }
+  // Cheap structural sanity: must be valid base64 shape
+  if (!/^[A-Za-z0-9+/=\r\n]+$/.test(base64Data.slice(0, 512)) || base64Data.length < 256) {
+    return NextResponse.json({ error: 'invalid_image', message: 'imageBase64 is not decodable.' }, { status: 400 });
+  }
+
+  const safeCity = sanitizeCity(body.city);
+  const city = isUsable(safeCity) ? canonicalCityName(safeCity) : 'Madurai';
+
+  const prompt = `You are MARGINS — the wholesale pricing oracle for Indian shopkeepers.
+${PROMPT_GUARD}
+Analyze this image of a wholesale delivery invoice/memo (parchi) received at a kirana store in ${sanitizePromptText(city, 64)}.
 
 Perform OCR on all visible line items and audit each line item against Indian wholesale benchmarks:
 1. Extract distributor name, invoice number, and date if visible.
@@ -146,7 +192,7 @@ Perform OCR on all visible line items and audit each line item against Indian wh
 
 Return JSON in this EXACT structure:
 {
-  "distributor": { "name": "string", "invoiceNo": "string", "date": "string", "city": "${body.city}" },
+  "distributor": { "name": "string", "invoiceNo": "string", "date": "string", "city": "${sanitizePromptText(city, 64)}" },
   "items": [
     {
       "name": "string",
@@ -184,37 +230,39 @@ Return JSON in this EXACT structure:
 }
 Output valid JSON only.`;
 
-    const imagePart = {
-      inlineData: {
-        data: base64Data,
-        mimeType: body.mimeType,
-      },
-    };
+  const imagePart = {
+    inlineData: {
+      data: base64Data,
+      mimeType,
+    },
+  };
 
+  try {
+    const result = await proModel().generateContent([prompt, imagePart as any]);
+    const text = result.response.text().trim();
+    const cleaned = text.replace(/^```json\n?/, '').replace(/\n?```$/, '');
+    const parsed = JSON.parse(cleaned);
+    parsed.analyzed_by = MODELS.pro;
+    return NextResponse.json(parsed);
+  } catch {
+    // Fallback to flash vision
     try {
-      const result = await proModel().generateContent([prompt, imagePart as any]);
-      const text = result.response.text().trim();
-      const cleaned = text.replace(/^```json\n?/, '').replace(/\n?```$/, '');
-      const parsed = JSON.parse(cleaned);
-      parsed.analyzed_by = MODELS.pro;
-      return NextResponse.json(parsed);
-    } catch {
-      // Fallback to flash vision
       const result = await flashModel().generateContent([prompt, imagePart as any]);
       const text = result.response.text().trim();
       const cleaned = text.replace(/^```json\n?/, '').replace(/\n?```$/, '');
       const parsed = JSON.parse(cleaned);
       parsed.analyzed_by = MODELS.flash;
       return NextResponse.json(parsed);
+    } catch (error) {
+      // Return sample on any unexpected vision error so the user is never stuck
+      return NextResponse.json({
+        ...SAMPLE_INVOICE_AUDIT,
+        fallback_reason: String(error).slice(0, 200),
+      });
     }
-  } catch (error) {
-    if (error instanceof z.ZodError) {
-      return NextResponse.json({ error: 'invalid_input', details: error.issues }, { status: 400 });
-    }
-    // Return sample on any unexpected vision error so the user is never stuck
-    return NextResponse.json({
-      ...SAMPLE_INVOICE_AUDIT,
-      fallback_reason: String(error),
-    });
   }
+}
+
+function isUsable(s: string): boolean {
+  return s.trim().length >= 2;
 }

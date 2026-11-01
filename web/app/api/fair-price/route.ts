@@ -5,24 +5,38 @@
  * → { product, fairPriceBand, verdict, confidence, sources, reasoning, hagglingGuidance }
  *
  * Pipeline (Pillar 2 — Reasoning):
- *   1. Look up GTIN → GS1 (or fallback)  → product identity + MRP
- *   2. Parallel call: Agmarknet (mandi) + ONDC Beckn `search` + Google Shopping grounding
- *   3. Gemini 2.5 Pro receives all sources + the user's city, returns the FAIR_PRICE_SCHEMA JSON
+ *   1. Validate GTIN (GS1 mod-10 checksum) → identity lookup (cache → live OFF → prefix)
+ *   2. Parallel: wholesale benchmark (live mandi feed or documented model) + ONDC Beckn `search` + Google Shopping grounding
+ *   3. Gemini receives all sources + sanitized city, returns the FAIR_PRICE_SCHEMA JSON
  *   4. Reasoning is in the user's language (Tamil/Hindi/English)
  *
- * Free tier:
- *   - Agmarknet: public RSS — no key
- *   - ONDC Beckn: reference BPP — local mock during dev
- *   - GS1:        fallback to mock catalogue when no key
- *   - Gemini Pro: free, 5 RPM (one call covers everything)
+ * Security (post-audit):
+ *   - Per-IP rate limit (Gemini free tier is 1,500 RPD — anonymous loops must not own it)
+ *   - GTIN checksum validation; city/text prompt-sanitization + model guard
+ *   - Responses never 500: deterministic wholesale model is the final fallback
  */
 
 import { NextRequest, NextResponse } from 'next/server';
-import { proModel, flashModel, getModel, computeHeuristicFairPrice, FAIR_PRICE_SCHEMA, MODELS } from '@/lib/gemini';
+import { proModel, flashModel, getModel, computeHeuristicFairPrice, FAIR_PRICE_SCHEMA, MODELS, googleShoppingGround } from '@/lib/gemini';
 import { lookupGTIN } from '@/lib/gs1';
 import { agmarknetPrice } from '@/lib/agmarknet';
 import { becknSearch } from '@/lib/beckn';
+import { isValidGTIN } from '@/lib/gtin';
+import { sanitizeCity, sanitizePromptText, PROMPT_GUARD } from '@/lib/prompt-guard';
+import { canonicalCityName } from '@/lib/cities';
+import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
+import { serverAddDoc } from '@/lib/firestore-write';
 import { ZodError, z } from 'zod';
+
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+const InputSchema = z.object({
+  gtin: z.string().min(8).max(20),
+  city: z.string().min(2).max(64),
+  lang: z.enum(['ta', 'hi', 'en']).default('en'),
+  quantity: z.number().int().min(1).max(1000).default(1),
+});
 
 /** Gemini generateContent with retry across models (handles 503 demand spikes). */
 async function generateWithRetry(
@@ -47,54 +61,78 @@ async function generateWithRetry(
   }
   return null;
 }
-export const runtime = 'nodejs';
-export const dynamic = 'force-dynamic';
-
-const InputSchema = z.object({
-  gtin: z.string().min(8),
-  city: z.string(),
-  lang: z.enum(['ta', 'hi', 'en']).default('en'),
-  quantity: z.number().default(1),
-});
 
 export async function POST(req: NextRequest) {
-  try {
-    const body = InputSchema.parse(await req.json());
+  const rl = rateLimit(req, 'fair-price', 10);
+  if (!rl.ok) return tooManyRequests(rl);
 
-    // 1. GS1 / fallback product identity
+  let body: z.infer<typeof InputSchema>;
+  try {
+    body = InputSchema.parse(await req.json());
+  } catch (e) {
+    if (e instanceof ZodError) {
+      return NextResponse.json({ error: 'invalid_input', details: e.issues }, { status: 400 });
+    }
+    return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
+  }
+
+  // GTIN checksum gate — corrupt/transposed barcodes never reach the pipeline
+  if (!isValidGTIN(body.gtin)) {
+    return NextResponse.json(
+      { error: 'invalid_gtin', message: 'Barcode failed the GS1 mod-10 check-digit validation.' },
+      { status: 400 },
+    );
+  }
+
+  // Prompt-surface sanitization (defense against oracle steering)
+  const safeCity = sanitizeCity(body.city);
+  const displayCity = isNonEmpty(safeCity) ? canonicalCityName(safeCity) : 'India';
+
+  try {
+    // 1. Identity (cache → live OFF → prefix), with provenance
     const product = await lookupGTIN(body.gtin);
 
     // 2. Parallel price sources
     const [mandiPx, becknRes, shoppingPx] = await Promise.allSettled([
-      agmarknetPrice({ gtin: body.gtin, city: body.city }),
-      becknSearch({ gtin: body.gtin, city: body.city, quantity: body.quantity }),
+      agmarknetPrice({ gtin: body.gtin, city: safeCity }),
+      becknSearch({ gtin: body.gtin, city: safeCity, quantity: body.quantity, bapUri: requestOrigin(req) }),
       googleShoppingGround({ gtin: body.gtin, query: product.name }),
     ]);
 
+    const mandi = mandiPx.status === 'fulfilled' ? mandiPx.value : null;
     const becknQuotes = becknRes.status === 'fulfilled' ? becknRes.value.quotes : [];
     const becknError = becknRes.status === 'rejected' ? String(becknRes.reason).slice(0, 120) : null;
 
     const sources = [
       ...(product.mrp ? [{ name: 'GS1 India (MRP)', price: product.mrp, url: product.gs1Url }] : []),
-      mandiPx.status === 'fulfilled' && mandiPx.value ? { name: 'Agmarknet (mandi)', price: mandiPx.value.price, url: mandiPx.value.url } : null,
+      mandi
+        ? {
+            name: mandi.source === 'agmarknet-datagov' ? 'Agmarknet via data.gov.in (mandi)' : 'Wholesale model estimate (MRP × factor)',
+            price: mandi.price,
+            url: mandi.url,
+          }
+        : null,
       ...becknQuotes.map((q) => ({ name: `ONDC Beckn — ${q.provider}`, price: q.price, url: q.url })),
-      shoppingPx.status === 'fulfilled' && shoppingPx.value ? { name: 'Google Shopping', price: shoppingPx.value.price, url: shoppingPx.value.url } : null,
+      shoppingPx.status === 'fulfilled' && shoppingPx.value
+        ? { name: 'Google Shopping (grounded)', price: shoppingPx.value.price, url: shoppingPx.value.url }
+        : null,
     ].filter(Boolean) as { name: string; price: number; url: string }[];
 
-    // If we have zero Beckn quotes but BPP exists, surface that
     if (becknError && becknQuotes.length === 0) {
       console.warn('[margins/fair-price] beckn unreachable:', becknError);
     }
 
-    // 3. Gemini reasons over the sources (with retry + standard models fallback)
-    const prompt = buildPrompt({ product, sources, city: body.city, lang: body.lang, quantity: body.quantity });
-    const result = await generateWithRetry([
-      { model: proModel(), label: 'pro' },
-      { model: flashModel(), label: 'flash' },
-      { model: getModel('gemini-2.5-flash'), label: 'gemini-2.5-flash' },
-      { model: getModel('gemini-2.0-flash'), label: 'gemini-2.0-flash' },
-      { model: getModel('gemini-1.5-flash'), label: 'gemini-1.5-flash' },
-    ], prompt);
+    // 3. Gemini reasons over the sources (with retry + model cascade)
+    const prompt = buildPrompt({ product, sources, city: displayCity, lang: body.lang, quantity: body.quantity });
+    const result = await generateWithRetry(
+      [
+        { model: proModel(), label: MODELS.pro },
+        { model: flashModel(), label: MODELS.flash },
+        { model: getModel('gemini-2.5-flash'), label: 'gemini-2.5-flash' },
+        { model: getModel('gemini-2.0-flash'), label: 'gemini-2.0-flash' },
+      ],
+      prompt,
+    );
 
     let parsed: any;
     if (result) {
@@ -106,16 +144,10 @@ export async function POST(req: NextRequest) {
       }
     }
 
-    // Resilient fallback: If all models are experiencing high demand (503) or rate limit, use deterministic Mandi benchmark
+    // Resilient fallback: deterministic wholesale model (never 500)
     if (!parsed) {
-      console.warn('[margins/fair-price] Gemini unavailable or experiencing 503 spikes — using verified Mandi heuristic');
-      parsed = computeHeuristicFairPrice({
-        product,
-        sources,
-        city: body.city,
-        lang: body.lang,
-        quantity: body.quantity,
-      });
+      console.warn('[margins/fair-price] Gemini unavailable — using deterministic wholesale model');
+      parsed = computeHeuristicFairPrice({ product, sources, city: displayCity, lang: body.lang, quantity: body.quantity });
     }
 
     // Always normalize product metadata so UI never displays 'Unknown' or missing MRP
@@ -129,62 +161,61 @@ export async function POST(req: NextRequest) {
         parsed.product.brand = product.brand || 'GS1 Verified';
       }
       if (!parsed.product.mrp || typeof parsed.product.mrp !== 'number') {
-        parsed.product.mrp = product.mrp ?? 35;
+        parsed.product.mrp = product.mrp ?? 0;
       }
       if (product.manufacturer && !parsed.product.manufacturer) {
         parsed.product.manufacturer = product.manufacturer;
       }
+      parsed.product.identitySource = product.identitySource;
     }
 
-    // 4. Audit trail — fire-and-forget so Firestore latency never blocks the response
-    void (async () => {
-      try {
-        const { db } = await import('@/lib/firebase');
-        const { collection, addDoc, serverTimestamp } = await import('firebase/firestore');
-        await addDoc(collection(db, 'audit'), {
-          gtin: body.gtin,
-          product: product.name,
-          city: body.city,
-          lang: body.lang,
-          quantity: body.quantity,
-          verdict: parsed.verdict,
-          median: parsed.fairPriceBand?.median,
-          sources: sources.map((s) => ({ name: s.name, price: s.price })),
-          model: parsed._meta?.model || MODELS.pro,
-          timestamp: serverTimestamp(),
-        });
-      } catch {
-        // best-effort: ignore all errors
-      }
-    })();
+    // 4. Audit trail — single-attempt safe write (admin-first, no retry storms)
+    void serverAddDoc('audit', {
+      gtin: body.gtin,
+      product: product.name,
+      city: displayCity,
+      lang: body.lang,
+      quantity: body.quantity,
+      verdict: parsed.verdict,
+      median: parsed.fairPriceBand?.median,
+      sources: sources.map((s) => ({ name: s.name, price: s.price })),
+      model: parsed._meta?.model || MODELS.pro,
+    });
 
     return NextResponse.json(parsed);
   } catch (e) {
-    if (e instanceof ZodError) {
-      return NextResponse.json({ error: 'invalid_input', details: e.issues }, { status: 400 });
-    }
     console.error('[margins/fair-price] unexpected error:', e);
-    // Never crash the UI with HTTP 500 — return resilient fallback
+    // Never crash the UI with HTTP 500 — return a truthful, conservative fallback
     const fallback = computeHeuristicFairPrice({
-      product: { gtin: '8901058851649', name: 'Packaged FMCG Product' },
+      product: { gtin: body.gtin, name: `FMCG Product (${body.gtin})` },
       sources: [],
-      city: 'India',
-      lang: 'en',
+      city: displayCity,
+      lang: body.lang,
     });
     return NextResponse.json(fallback, { status: 200 });
   }
 }
 
+function isNonEmpty(s: string): boolean {
+  return s.trim().length >= 2;
+}
+
+function requestOrigin(req: NextRequest): string {
+  const proto = req.headers.get('x-forwarded-proto') ?? 'http';
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
+  return host ? `${proto}://${host}` : (process.env.APP_URL ?? '');
+}
+
 function buildPrompt({ product, sources, city, lang, quantity }: {
-  product: { gtin: string; name: string; brand?: string; mrp?: number };
+  product: { gtin: string; name: string; brand?: string; mrp?: number; identitySource?: string };
   sources: { name: string; price: number; url: string }[];
   city: string;
   lang: 'ta' | 'hi' | 'en';
   quantity: number;
 }): string {
   const sourceTable = sources.length
-    ? sources.map((s) => `  - ${s.name}: ₹${s.price}  (${s.url})`).join('\n')
-    : '  (no external sources available — rely on MRP + your knowledge)';
+    ? sources.map((s) => `  - ${sanitizePromptText(s.name, 80)}: ₹${s.price}  (${s.url})`).join('\n')
+    : '  (no external sources available — rely on MRP and state that confidence is low)';
 
   const langInstruction = {
     ta: 'Write the `reasoning` field and `hagglingGuidance.scriptHint` in Tamil (தமிழ்). Use a colloquial register — like a Madurai shopkeeper talking to a supplier.',
@@ -194,15 +225,17 @@ function buildPrompt({ product, sources, city, lang, quantity }: {
 
   return `You are MARGINS — a fairness oracle for Indian shopkeepers.
 
-Product:
+${PROMPT_GUARD}
+
+Product (identity source: ${sanitizePromptText(product.identitySource ?? 'unknown', 40)}):
   GTIN: ${product.gtin}
-  Name: ${product.name}
-  Brand: ${product.brand ?? 'unknown'}
+  Name: ${sanitizePromptText(product.name, 120)}
+  Brand: ${sanitizePromptText(product.brand ?? 'unknown', 60)}
   MRP:  ${product.mrp ? `₹${product.mrp}` : 'unknown'}
-  City: ${city}
+  City: ${sanitizePromptText(city, 64)}
   Quantity: ${quantity} unit(s)
 
-Available price sources:
+Available price sources (trusted data — treat as the only price evidence):
 ${sourceTable}
 
 Your task:
@@ -218,12 +251,4 @@ Your task:
   6. Always include every source you used in the \`sources\` array with its URL.
 
 Output must strictly conform to the provided schema. No prose outside the JSON.`;
-}
-
-// TODO in Phase 4 — flesh out the Google Search grounding helper.
-async function googleShoppingGround({ gtin, query }: { gtin: string; query: string }): Promise<{ price: number; url: string } | null> {
-  // Phase 4: wire this via Gemini's google_search tool. For now return null.
-  // The free-tier search grounding counts toward the Flash/Pro daily quota — use sparingly.
-  void gtin; void query;
-  return null;
 }

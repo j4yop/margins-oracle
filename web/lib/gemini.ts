@@ -4,14 +4,17 @@
  * Single source of truth for the Gemini SDK setup. All routes/components import
  * the helpers from here so we can swap model versions in one place.
  *
- * This account (project 67005681731) has Flash-only access. We use:
- *   - gemini-3.1-flash-lite  → routing, summarisation, fast JSON
- *   - gemini-3.7-flash       → fair-price reasoning (handles schema + function calling)
- *   - gemini-2.0-flash-exp   → Live API (free preview)
- *   - gemini-embedding-2     → margins ledger vector index
+ * Model defaults are real, publicly-available Google AI model IDs (the old
+ * defaults referenced IDs that don't resolve on the public API). Everything is
+ * env-overridable:
+ *   - gemini-2.5-flash       → reasoning ("pro" tier) + multimodal OCR
+ *   - gemini-2.5-flash-lite  → routing / fast JSON ("flash" tier)
+ *   - gemini-2.0-flash       → extra cascade fallback
+ *   - gemini-2.5-flash-preview-tts → dialect speech
+ *   - gemini-embedding-2?    → embeddings (see MODELS.embed; env-overridable)
  *
  * Structured output (responseSchema + responseMimeType: 'application/json')
- * is supported across all current Flash models. Function calling works too.
+ * is enforced across the fair-price pipeline.
  */
 
 import { GoogleGenerativeAI } from '@google/generative-ai';
@@ -24,10 +27,10 @@ if (!apiKey) {
 export const genai = new GoogleGenerativeAI(apiKey ?? 'STUB');
 
 export const MODELS = {
-  flash: process.env.GEMINI_MODEL_FLASH ?? 'gemini-3.1-flash-lite',
-  pro: process.env.GEMINI_MODEL_PRO ?? 'gemini-3.7-flash',
+  flash: process.env.GEMINI_MODEL_FLASH ?? 'gemini-2.5-flash-lite',
+  pro: process.env.GEMINI_MODEL_PRO ?? 'gemini-2.5-flash',
   live: process.env.GEMINI_MODEL_LIVE ?? 'gemini-2.0-flash-exp',
-  embed: process.env.GEMINI_MODEL_EMBED ?? 'gemini-embedding-2',
+  embed: process.env.GEMINI_MODEL_EMBED ?? 'gemini-embedding-001',
   tts: process.env.GEMINI_MODEL_TTS ?? 'gemini-2.5-flash-preview-tts',
   image: process.env.GEMINI_MODEL_IMAGE ?? 'gemini-2.5-flash-image',
 } as const;
@@ -73,7 +76,41 @@ export function embedModel() {
   return genai.getGenerativeModel({ model: MODELS.embed });
 }
 
-/** Resilient deterministic Mandi & GS1 wholesale calculator when Gemini API spikes or is unavailable */
+/**
+ * True median across valid source prices (the old implementation computed a
+ * *mean* while labeling it "median" — fixed, because the median is robust to
+ * a single wildly inflated distributor quote, which is exactly the threat
+ * model of this product).
+ */
+export function medianOf(values: number[]): number | null {
+  const v = values.filter((n) => typeof n === 'number' && n > 0).sort((a, b) => a - b);
+  if (!v.length) return null;
+  const mid = Math.floor(v.length / 2);
+  return v.length % 2 ? v[mid] : Math.round((v[mid - 1] + v[mid]) / 2);
+}
+
+/**
+ * Verdict derived from data, not asserted. Same thresholds the oracle prompt
+ * teaches the model, applied deterministically:
+ *   overpriced      median > MRP
+ *   fair            median within 70–95% of MRP (also accepts ≤ MRP band up to 100%)
+ *   underpriced     median < 60% of MRP
+ *   insufficient_data fewer than 2 real sources
+ */
+export function verdictFromData(median: number, mrp: number | undefined, sourceCount: number) {
+  if (sourceCount < 2) return 'insufficient_data';
+  if (!mrp || mrp <= 0) return 'fair';
+  const ratio = median / mrp;
+  if (ratio > 1.0) return 'overpriced';
+  if (ratio < 0.6) return 'underpriced';
+  return 'fair';
+}
+
+/**
+ * Resilient deterministic wholesale calculator when the Gemini API is
+ * unavailable or rate-limited. No fabricated provenance: sources are labeled
+ * exactly as what they are, and estimated sources say so.
+ */
 export function computeHeuristicFairPrice({
   product,
   sources,
@@ -90,10 +127,9 @@ export function computeHeuristicFairPrice({
   const mrp = product.mrp ?? 40;
   const validPrices = sources.map((s) => s.price).filter((p) => typeof p === 'number' && p > 0);
 
-  // Median wholesale price calculation
-  const median = validPrices.length > 0
-    ? Math.round(validPrices.reduce((a, b) => a + b, 0) / validPrices.length)
-    : Math.round(mrp * 0.85); // standard 15% wholesale/distributor margin benchmark
+  const median =
+    medianOf(validPrices) ??
+    Math.round(mrp * 0.85); // documented wholesale-margin model when no sources
 
   const low = Math.round(median * 0.96);
   const high = Math.round(median * 1.04);
@@ -114,7 +150,7 @@ export function computeHeuristicFairPrice({
 
   const allSources = sources.length > 0 ? sources : [
     ...(mrp ? [{ name: 'GS1 India (MRP)', price: mrp, url: product.gs1Url || 'https://gs1india.org' }] : []),
-    { name: `Agmarknet Wholesale (${city})`, price: median, url: 'https://agmarknet.gov.in' },
+    { name: `Wholesale model estimate (${city})`, price: median, url: 'https://agmarknet.gov.in' },
   ];
 
   return {
@@ -133,7 +169,7 @@ export function computeHeuristicFairPrice({
     },
     confidence: validPrices.length >= 2 ? 0.90 : 0.75,
     sources: allSources,
-    verdict: 'fair',
+    verdict: verdictFromData(median, product.mrp, validPrices.length),
     reasoning,
     hagglingGuidance: {
       openingOffer,
@@ -141,7 +177,7 @@ export function computeHeuristicFairPrice({
       scriptHint,
     },
     _meta: {
-      model: 'deterministic-mandi-engine',
+      model: 'deterministic-wholesale-model',
       ts: new Date().toISOString(),
       resilient_fallback: true,
     },
@@ -211,6 +247,45 @@ export const FAIR_PRICE_SCHEMA: any = {
   },
   required: ['product', 'fairPriceBand', 'verdict', 'sources', 'reasoning'],
 };
+
+/**
+ * Live Google Shopping / web price grounding via Gemini's google_search tool.
+ * Returns a single corroborating retail price with its citation URL, or null
+ * when the API key is missing, the tool errors, or no price is extractable.
+ * Counted against the daily quota — callers invoke it once per fair-price run.
+ */
+export async function googleShoppingGround({
+  gtin,
+  query,
+}: {
+  gtin: string;
+  query: string;
+}): Promise<{ price: number; url: string } | null> {
+  if (!apiKey) return null;
+  try {
+    const model = genai.getGenerativeModel({
+      model: MODELS.pro,
+      tools: [{ googleSearch: {} } as any],
+      generationConfig: { temperature: 0.1, maxOutputTokens: 512 },
+    });
+    const out = await model.generateContent(
+      `Find the current typical retail or wholesale price in Indian Rupees for this exact product: "${query}" (GTIN ${gtin}). ` +
+      `Reply with ONLY a JSON object: {"price_inr": <number>, "source_url": "<url of the page that states the price>"}.`,
+    );
+    const text = out.response.text().trim();
+    const match = text.match(/\{[\s\S]*\}/);
+    if (!match) return null;
+    const parsed = JSON.parse(match[0]);
+    const price = Number(parsed.price_inr);
+    const url = String(parsed.source_url ?? '');
+    if (Number.isFinite(price) && price > 0 && /^https?:\/\//.test(url)) {
+      return { price: Math.round(price), url };
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
 
 /** Smoke-test the API key + models. Run once after setup. */
 export async function smokeTest(): Promise<{

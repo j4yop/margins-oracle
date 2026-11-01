@@ -3,8 +3,12 @@
 import { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import { DEMO_PRODUCTS } from '@/lib/demo-products';
+import { isValidGTIN } from '@/lib/gtin';
 import SiteNav from '@/components/SiteNav';
 import SiteFooter from '@/components/SiteFooter';
+
+const UPI_VPA_RE = /^[A-Za-z0-9._-]{2,}@[A-Za-z]{2,}$/;
+const FALLBACK_VPA = process.env.NEXT_PUBLIC_MERCHANT_UPI_VPA ?? '';
 
 type FairPrice = {
   product: { gtin: string; name: string; brand?: string; mrp?: number };
@@ -72,6 +76,20 @@ export default function CameraPage() {
   const [invoiceResult, setInvoiceResult] = useState<InvoiceAudit | null>(null);
   const [invoicePreview, setInvoicePreview] = useState<string | null>(null);
   const [invoiceError, setInvoiceError] = useState<string | null>(null);
+
+  // Distributor UPI VPA for the fair-settlement lock (audit finding #9:
+  // the old build hardcoded `pa=store@upi`, i.e. real money to a placeholder).
+  const [distributorVpa, setDistributorVpa] = useState('');
+  useEffect(() => {
+    const saved = window.localStorage.getItem('margins.distributorVpa');
+    if (saved) setDistributorVpa(saved);
+  }, []);
+  const vpaValid = UPI_VPA_RE.test(distributorVpa);
+  const effectiveVpa = vpaValid ? distributorVpa : (UPI_VPA_RE.test(FALLBACK_VPA) ? FALLBACK_VPA : '');
+  function saveVpa(v: string) {
+    setDistributorVpa(v);
+    if (UPI_VPA_RE.test(v)) window.localStorage.setItem('margins.distributorVpa', v);
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -285,6 +303,11 @@ export default function CameraPage() {
                 className="w-full px-3.5 py-2.5 rounded-xl border border-slate-200 font-mono text-sm bg-slate-50 focus:bg-white focus:ring-2 focus:ring-orange-500 focus:outline-none transition"
                 inputMode="numeric"
               />
+              {gtin.length >= 8 && !isValidGTIN(gtin) && (
+                <div className="text-[11px] text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-2.5 py-1.5 mt-1">
+                  ⚠ Checksum warning: this barcode fails GS1 mod-10 validation. Double-check the digits.
+                </div>
+              )}
             </div>
 
             <div className="grid grid-cols-2 gap-2">
@@ -600,12 +623,40 @@ export default function CameraPage() {
                     </a>
                   )}
 
-                  <a
-                    href={`upi://pay?pa=store@upi&pn=${encodeURIComponent(invoiceResult.distributor?.name || 'Distributor')}&am=${invoiceResult.summary.totalFair}&cu=INR&tn=Invoice_${encodeURIComponent(invoiceResult.distributor?.invoiceNo || 'Memo')}_Settlement`}
-                    className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 active:scale-[0.99] text-white text-center font-bold text-xs shadow-md shadow-orange-500/20 transition"
-                  >
-                    <span>💳 Pay Fair Amount via UPI (₹{invoiceResult.summary.totalFair})</span>
-                  </a>
+                  {/* Distributor UPI ID — required for a real fair-settlement lock */}
+                  <div className="p-3 rounded-xl bg-slate-50 border border-slate-200 space-y-1.5">
+                    <label className="text-[10px] font-mono text-slate-500 uppercase tracking-wider block">
+                      Distributor UPI ID (for the settlement lock)
+                    </label>
+                    <input
+                      value={distributorVpa}
+                      onChange={(e) => saveVpa(e.target.value)}
+                      placeholder="distributor@upi (ask at delivery, saved on this device)"
+                      className={`w-full px-3 py-2 rounded-lg border font-mono text-xs bg-white focus:outline-none focus:ring-2 transition ${
+                        distributorVpa === '' || vpaValid
+                          ? 'border-slate-200 focus:ring-orange-500'
+                          : 'border-rose-300 focus:ring-rose-400'
+                      }`}
+                      inputMode="email"
+                      autoCapitalize="off"
+                    />
+                    {distributorVpa !== '' && !vpaValid && (
+                      <div className="text-[10px] text-rose-600 font-medium">Format: name@bank (e.g. seller@okhdfcbank)</div>
+                    )}
+                  </div>
+
+                  {effectiveVpa ? (
+                    <a
+                      href={`upi://pay?pa=${encodeURIComponent(effectiveVpa)}&pn=${encodeURIComponent(invoiceResult.distributor?.name || 'Distributor')}&am=${invoiceResult.summary.totalFair}&cu=INR&tn=Invoice_${encodeURIComponent(invoiceResult.distributor?.invoiceNo || 'Memo')}_Settlement`}
+                      className="flex items-center justify-center gap-2 w-full py-3 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 active:scale-[0.99] text-white text-center font-bold text-xs shadow-md shadow-orange-500/20 transition"
+                    >
+                      <span>💳 Pay Fair Amount ₹{invoiceResult.summary.totalFair} via UPI ({effectiveVpa})</span>
+                    </a>
+                  ) : (
+                    <div className="w-full py-3 rounded-xl bg-slate-100 text-slate-500 text-center font-semibold text-xs border border-slate-200">
+                      💳 Enter the distributor&apos;s UPI ID above to lock the fair payment
+                    </div>
+                  )}
 
                   <Link
                     href="/haggle"

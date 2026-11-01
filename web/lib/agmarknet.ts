@@ -1,128 +1,121 @@
 /**
- * lib/agmarknet.ts — Govt of India mandi prices
+ * lib/agmarknet.ts — wholesale benchmark layer
  *
- * Source: https://agmarknet.gov.in (public, no key)
- * Format: daily wholesale prices for commodities across Indian mandis.
+ * The original implementation shipped a static hard-coded price snapshot
+ * (12 products × 5 cities) presented as "Agmarknet (mandi)" data. That was
+ * fabricated provenance — this module replaces it with an honest, live-first
+ * benchmark pipeline:
  *
- * Uses cached verified mandi records across key Indian markets with dynamic
- * category wholesale calculation.
+ *  1. Live mandi feed (only when DATA_GOV_IN_API_KEY is configured): the
+ *     data.gov.in "Current Daily Price of Various Commodities from Various
+ *     Markets" dataset (Agmarknet-sourced). Agricultural commodities only —
+ *     branded FMCG has no mandi price, so a category→commodity mapping is
+ *     used where it genuinely applies (staples, oils, produce).
+ *  2. Documented wholesale model (always available): MRP × wholesale factor.
+ *     This is a *model estimate*, and the source name says exactly that —
+ *     no government API is claimed for it.
+ *
+ * Env:
+ *   DATA_GOV_IN_API_KEY  — free key from data.gov.in (developer plan)
+ *   WHOLESALE_FACTOR     — default 0.85, clamped 0.5–0.99
  */
 
 import { lookupGTINSync } from './gs1';
 
-type MandiPrice = { price: number; url: string };
-
-const SNAPSHOT: Record<string, Record<string, number>> = {
-  Madurai: {
-    'amul-butter-500g': 245,
-    'parle-g-1kg': 92,
-    'britannia-bourbon-120g': 29,
-    'britannia-goodday-100g': 25,
-    'britannia-goodday-cashew-100g': 29,
-    'britannia-marie-250g': 29,
-    'amul-taaza-1l': 62,
-    'tata-salt-1kg': 24,
-    'tata-tea-500g': 208,
-    'fortune-oil-1l': 126,
-    'aashirvaad-atta-5kg': 214,
-    'maggi-noodles-70g': 12,
-  },
-  Bengaluru: {
-    'amul-butter-500g': 248,
-    'parle-g-1kg': 95,
-    'britannia-bourbon-120g': 30,
-    'britannia-goodday-100g': 26,
-    'britannia-goodday-cashew-100g': 30,
-    'britannia-marie-250g': 30,
-    'amul-taaza-1l': 63,
-    'tata-salt-1kg': 25,
-    'tata-tea-500g': 212,
-    'fortune-oil-1l': 128,
-    'aashirvaad-atta-5kg': 218,
-    'maggi-noodles-70g': 12,
-  },
-  Chennai: {
-    'amul-butter-500g': 246,
-    'parle-g-1kg': 93,
-    'britannia-bourbon-120g': 29,
-    'britannia-goodday-100g': 25,
-    'britannia-goodday-cashew-100g': 29,
-    'britannia-marie-250g': 29,
-    'amul-taaza-1l': 62,
-    'tata-salt-1kg': 24,
-    'tata-tea-500g': 210,
-    'fortune-oil-1l': 127,
-    'aashirvaad-atta-5kg': 216,
-    'maggi-noodles-70g': 12,
-  },
-  Mumbai: {
-    'amul-butter-500g': 244,
-    'parle-g-1kg': 91,
-    'britannia-bourbon-120g': 29,
-    'britannia-goodday-100g': 25,
-    'britannia-goodday-cashew-100g': 29,
-    'britannia-marie-250g': 29,
-    'amul-taaza-1l': 61,
-    'tata-salt-1kg': 24,
-    'tata-tea-500g': 206,
-    'fortune-oil-1l': 125,
-    'aashirvaad-atta-5kg': 212,
-    'maggi-noodles-70g': 12,
-  },
-  Delhi: {
-    'amul-butter-500g': 245,
-    'parle-g-1kg': 92,
-    'britannia-bourbon-120g': 29,
-    'britannia-goodday-100g': 25,
-    'britannia-goodday-cashew-100g': 29,
-    'britannia-marie-250g': 29,
-    'amul-taaza-1l': 62,
-    'tata-salt-1kg': 24,
-    'tata-tea-500g': 208,
-    'fortune-oil-1l': 126,
-    'aashirvaad-atta-5kg': 214,
-    'maggi-noodles-70g': 12,
-  },
+export type MandiPrice = {
+  price: number;
+  url: string;
+  /** Honest provenance for the UI + audit trail. */
+  source: 'agmarknet-datagov' | 'model-estimate';
+  /** For live feeds: the mandi/date the price refers to. */
+  observedAt?: string;
 };
 
-const GTIN_MAP: Record<string, string> = {
-  '8901058851649': 'amul-butter-500g',
-  '8901030865278': 'parle-g-1kg',
-  '8901030383796': 'parle-g-1kg',
-  '8901063139466': 'britannia-bourbon-120g',
-  '8901063012646': 'britannia-goodday-100g',
-  '8901063027879': 'britannia-goodday-cashew-100g',
-  '8901063152526': 'britannia-marie-250g',
-  '8901058851427': 'amul-taaza-1l',
-  '8901057011013': 'tata-salt-1kg',
-  '8901030865728': 'tata-salt-1kg',
-  '8901057002011': 'tata-tea-500g',
-  '8906007280014': 'fortune-oil-1l',
-  '8901725131238': 'aashirvaad-atta-5kg',
-  '8901052002542': 'maggi-noodles-70g',
+const DATA_GOV_RESOURCE = '9ef84268-d588-465a-a308-a864a43d0070'; // daily mandi prices dataset
+const WHOLESALE_FACTOR = Math.min(0.99, Math.max(0.5, Number(process.env.WHOLESALE_FACTOR ?? 0.85)));
+
+/** Only these categories have a true mandi (agricultural market) analogue. */
+const CATEGORY_TO_COMMODITY: Record<string, string[]> = {
+  'Staples': ['Wheat', 'Atta', 'Rice'],
+  'Edible Oils': ['Sunflower', 'Groundnut', 'Mustard Oil'],
+  'Beverages': ['Tea'],
 };
+
+function modelEstimate(gtin: string, city: string): MandiPrice | null {
+  const product = lookupGTINSync(gtin);
+  const mrp = product.mrp;
+  if (!mrp || mrp <= 0) return null; // no fabricated MRP → no fabricated benchmark
+  return {
+    price: Math.round(mrp * WHOLESALE_FACTOR),
+    url: `https://agmarknet.gov.in/SearchCmmdty.aspx`,
+    source: 'model-estimate',
+  };
+}
 
 export async function agmarknetPrice({ gtin, city }: { gtin: string; city: string }): Promise<MandiPrice | null> {
   const cleanGtin = gtin.trim();
-  const key = GTIN_MAP[cleanGtin];
-  const citySnapshot = SNAPSHOT[city] ?? SNAPSHOT['Madurai'];
-
-  if (key && citySnapshot[key]) {
-    return {
-      price: citySnapshot[key],
-      url: `https://agmarknet.gov.in/commodity-reports/${key}-${city.toLowerCase()}`,
-    };
-  }
-
-  // Dynamic mandi benchmark derived from product MRP and category
   const product = lookupGTINSync(cleanGtin);
-  if (product && product.mrp) {
-    const wholesalePrice = Math.round(product.mrp * 0.84);
-    return {
-      price: wholesalePrice,
-      url: `https://agmarknet.gov.in/price-trends?market=${encodeURIComponent(city)}`,
-    };
+
+  // 1. Live mandi feed when a key is configured AND the product category has
+  //    a real mandi analogue. Branded FMCG (biscuits, butter, soap) is
+  //    intentionally NOT looked up in mandi feeds.
+  const apiKey = process.env.DATA_GOV_IN_API_KEY;
+  const commodities = product.category ? CATEGORY_TO_COMMODITY[product.category] : undefined;
+
+  if (apiKey && commodities?.length) {
+    try {
+      const commodity = commodities[0];
+      const state = ''; // dataset filters accept optional state/district
+      const url =
+        `https://api.data.gov.in/resource/${DATA_GOV_RESOURCE}` +
+        `?api-key=${encodeURIComponent(apiKey)}` +
+        `&format=json&limit=10` +
+        `&filters%5Bcommodity%5D=${encodeURIComponent(commodity)}` +
+        (state ? `&filters%5Bstate%5D=${encodeURIComponent(state)}` : '');
+
+      const ctl = new AbortController();
+      const timer = setTimeout(() => ctl.abort(), 4000);
+      const res = await fetch(url, { signal: ctl.signal });
+      clearTimeout(timer);
+      if (res.ok) {
+        const data = await res.json();
+        const records: any[] = data?.records ?? [];
+        const prices = records
+          .map((r) => Number(r.min_price ?? r.min_price__rupees_quintal_ ?? NaN))
+          .filter((n) => Number.isFinite(n) && n > 0);
+        if (prices.length) {
+          const perQuintal = prices.sort((a, b) => a - b)[Math.floor(prices.length / 2)];
+          // Mandi prices are per quintal (100kg); convert to a per-kg band and
+          // scale by the packaged size when the product name carries one.
+          const perKg = perQuintal / 100;
+          const sizeKg = sizeFromName(product.name);
+          const estimate = sizeKg ? Math.max(1, Math.round(perKg * sizeKg * 1.1)) : null;
+          if (estimate) {
+            return {
+              price: estimate,
+              url: `https://data.gov.in/resource/${DATA_GOV_RESOURCE}`,
+              source: 'agmarknet-datagov',
+              observedAt: String(records[0]?.timestamp ?? ''),
+            };
+          }
+        }
+      }
+    } catch {
+      // fall through to the model estimate
+    }
   }
 
+  // 2. Documented model estimate (honest label)
+  return modelEstimate(cleanGtin, city);
+}
+
+/** Extract a metric size (kg or L) from a product name, e.g. "5kg", "1L Pouch", "500 g". */
+function sizeFromName(name: string): number | null {
+  const m = name.match(/(\d+(?:\.\d+)?)\s*(kg|l|litre|liter)\b/i);
+  if (m) return Number(m[1]);
+  const g = name.match(/(\d+(?:\.\d+)?)\s*g\b/i);
+  if (g) return Number(g[1]) / 1000;
+  const ml = name.match(/(\d+(?:\.\d+)?)\s*ml\b/i);
+  if (ml) return Number(ml[1]) / 1000;
   return null;
 }
