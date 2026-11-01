@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { logTransaction, recentTransactions, db } from '@/lib/firebase';
+import { logTransaction, recentTransactions, db, ensureAuth, firebaseConfigured } from '@/lib/firebase';
 import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
 import SiteNav from '@/components/SiteNav';
 import SiteFooter from '@/components/SiteFooter';
@@ -20,30 +20,50 @@ type Tx = {
 };
 
 export default function LedgerPage() {
-  const [merchantId] = useState('demo-merchant-1');
+  const merchantId = 'demo-merchant-1';
+  const [uid, setUid] = useState<string | null>(null);
   const [rows, setRows] = useState<Tx[]>([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [seeded, setSeeded] = useState(false);
 
+  // Anonymous auth first: ledger writes are owner-scoped under the hardened
+  // Firestore rules (ownerUid == auth.uid). Degradation is explicit.
+  useEffect(() => {
+    (async () => {
+      if (!firebaseConfigured()) {
+        setStatus('Firestore not configured — set NEXT_PUBLIC_FIREBASE_* env vars to enable the ledger.');
+        return;
+      }
+      const id = await ensureAuth();
+      setUid(id);
+      if (!id) {
+        setStatus('Anonymous sign-in unavailable — enable the Anonymous provider in the Firebase console (Authentication → Sign-in method).');
+      }
+    })();
+  }, []);
+
   useEffect(() => {
     refresh();
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [uid]);
 
   async function refresh() {
     setBusy(true);
     try {
-      const r = await recentTransactions(merchantId, 20);
+      const r = await recentTransactions(merchantId, 20, uid);
       setRows(r as Tx[]);
       setStatus(`Loaded ${r.length} transactions`);
     } catch (e) {
-      setStatus(`Offline / Cache mode: ${String(e).slice(0, 80)}`);
+      setRows([]);
+      setStatus(`Ledger read failed (${String(e).slice(0, 80)})`);
     } finally {
       setBusy(false);
     }
   }
 
   async function seed() {
+    if (!uid) { setStatus('Sign in first (anonymous auth) to write to the ledger.'); return; }
     setBusy(true);
     setStatus('Seeding 3 verified transactions…');
     try {
@@ -53,18 +73,19 @@ export default function LedgerPage() {
         { merchantId, gtin: '8901030865278', product: 'Parle-G 1kg', supplierPrice: 105, fairPrice: 96, saved: 9, verdict: 'overpriced' },
       ];
       for (const s of samples) {
-        await addDoc(collection(db, 'transactions'), { ...s, timestamp: serverTimestamp() });
+        await addDoc(collection(db, 'transactions'), { ...s, ownerUid: uid, timestamp: serverTimestamp() });
       }
       setSeeded(true);
       await refresh();
     } catch (e) {
-      setStatus(`Seed notice: ${String(e).slice(0, 80)}`);
+      setStatus(`Seed failed: ${String(e).slice(0, 80)}`);
     } finally {
       setBusy(false);
     }
   }
 
   async function addOne() {
+    if (!uid) { setStatus('Sign in first (anonymous auth) to write to the ledger.'); return; }
     setBusy(true);
     try {
       await logTransaction({
@@ -75,12 +96,15 @@ export default function LedgerPage() {
         fairPrice: 252,
         saved: 8,
         verdict: 'overpriced',
+        ownerUid: uid,
         sources: [
           { name: 'GS1 India (MRP)', price: 280, url: 'https://www.gs1india.org' },
           { name: 'ONDC Beckn — Madurai Wholesale', price: 252, url: 'https://ondc.org' },
         ],
       });
       await refresh();
+    } catch (e) {
+      setStatus(`Write failed: ${String(e).slice(0, 80)}`);
     } finally {
       setBusy(false);
     }
@@ -100,10 +124,11 @@ export default function LedgerPage() {
             <h1 className="font-display font-bold text-2xl text-slate-900">Margins Ledger</h1>
             <p className="text-xs text-slate-500 mt-0.5 font-mono">
               Merchant: <span className="font-semibold text-slate-800">{merchantId}</span>
+              {uid && <> &bull; <span className="text-emerald-600">owner-verified</span></>}
             </p>
           </div>
-          <span className="px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 font-mono text-[10px] font-bold border border-emerald-200">
-            Firestore Synced
+          <span className={`px-2.5 py-1 rounded-full font-mono text-[10px] font-bold border ${uid ? 'bg-emerald-50 text-emerald-700 border-emerald-200' : 'bg-slate-100 text-slate-500 border-slate-200'}`}>
+            {uid ? 'Firestore Synced' : 'Local Only'}
           </span>
         </div>
       </div>
@@ -138,22 +163,22 @@ export default function LedgerPage() {
         <div className="flex items-center gap-2 flex-wrap pt-1">
           <button
             onClick={seed}
-            disabled={busy || seeded}
+            disabled={busy || seeded || !uid}
             className="px-3.5 py-2 rounded-xl bg-orange-600 text-white font-semibold text-xs shadow-sm hover:bg-orange-500 disabled:opacity-50 transition"
           >
             {seeded ? '✓ Demo Seeded' : '★ Seed 3 Transactions'}
           </button>
           <button
             onClick={addOne}
-            disabled={busy}
-            className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-semibold text-xs hover:bg-slate-50 transition"
+            disabled={busy || !uid}
+            className="px-3.5 py-2 rounded-xl bg-white border border-slate-200 text-slate-700 font-semibold text-xs hover:bg-slate-50 disabled:opacity-50 transition"
           >
             + Add Transaction
           </button>
           <button
             onClick={refresh}
             disabled={busy}
-            className="px-3 py-2 rounded-xl bg-slate-100 text-slate-600 font-semibold text-xs hover:bg-slate-200 transition"
+            className="px-3.5 py-2 rounded-xl bg-slate-100 text-slate-600 font-semibold text-xs hover:bg-slate-200 transition"
           >
             ↻
           </button>

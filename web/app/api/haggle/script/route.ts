@@ -1,59 +1,100 @@
 /**
  * /api/haggle/script
  *
- * Returns a generated haggling script based on the product's fair-price band and
- * payment terms (spot cash vs 15/30-day udhaar/credit).
+ * Returns a generated haggling script based on the product's fair-price band
+ * and payment terms (spot cash vs 15/30-day udhaar/credit).
  *
- * Pre-generates supplier quotes (overpriced), oracle whispers, shopkeeper responses,
- * and settlement line. Weaponizes working capital and credit terms as strategic leverage.
+ * Pre-generates supplier quotes (overpriced), oracle whispers, shopkeeper
+ * responses, and settlement line. Weaponizes working capital and credit terms
+ * as strategic leverage.
+ *
+ * Security (post-audit): GTIN checksum gate, prompt-surface sanitization,
+ * per-IP rate limit. The in-memory cache is keyed on *sanitized* inputs only.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { proModel, flashModel, MODELS } from '@/lib/gemini';
 import { lookupGTIN } from '@/lib/gs1';
 import { becknSearch } from '@/lib/beckn';
+import { isValidGTIN } from '@/lib/gtin';
+import { sanitizeCity, sanitizePromptText, PROMPT_GUARD } from '@/lib/prompt-guard';
+import { canonicalCityName } from '@/lib/cities';
+import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
 import { z } from 'zod';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const InputSchema = z.object({
-  gtin: z.string().min(8),
-  city: z.string().default('Madurai'),
+  gtin: z.string().min(8).max(20),
+  city: z.string().min(2).max(64).default('Madurai'),
   lang: z.enum(['ta', 'hi', 'en']).default('ta'),
-  median: z.number().optional(),
-  quantity: z.number().default(1),
+  median: z.number().min(0).max(1_000_000).optional(),
+  quantity: z.number().int().min(1).max(1000).default(1),
   paymentTerms: z.enum(['cash', '15_days', '30_days']).default('15_days'),
 });
 
 const cache = new Map<string, { ts: number; payload: any }>();
 const TTL = 5 * 60 * 1000;
+const CACHE_MAX = 200;
 
 export async function POST(req: NextRequest) {
+  const rl = rateLimit(req, 'haggle', 10);
+  if (!rl.ok) return tooManyRequests(rl);
+
+  let body: z.infer<typeof InputSchema>;
   try {
-    const body = InputSchema.parse(await req.json());
-    const key = `${body.gtin}-${body.city}-${body.lang}-${body.paymentTerms}-${body.median ?? 'auto'}`;
-    const hit = cache.get(key);
-    if (hit && Date.now() - hit.ts < TTL) {
-      return NextResponse.json({ ...hit.payload, cached: true });
-    }
-
-    // If no median passed, compute one
-    let median = body.median;
-    if (!median) {
-      const product = await lookupGTIN(body.gtin);
-      const beckn = await becknSearch({ gtin: body.gtin, city: body.city });
-      const prices = [product.mrp, ...beckn.quotes.map((q) => q.price)].filter(Boolean) as number[];
-      median = prices.length ? Math.round(prices.sort((a, b) => a - b)[Math.floor(prices.length / 2)]) : 100;
-    }
-
-    const script = await generateScript(body.gtin, body.city, body.lang, median, body.paymentTerms);
-    const payload = { median, lang: body.lang, paymentTerms: body.paymentTerms, ...script };
-    cache.set(key, { ts: Date.now(), payload });
-    return NextResponse.json(payload);
+    body = InputSchema.parse(await req.json());
   } catch (e) {
-    return NextResponse.json({ error: String(e) }, { status: 500 });
+    if (e instanceof z.ZodError) {
+      return NextResponse.json({ error: 'invalid_input', details: e.issues }, { status: 400 });
+    }
+    return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
   }
+
+  if (!isValidGTIN(body.gtin)) {
+    return NextResponse.json(
+      { error: 'invalid_gtin', message: 'Barcode failed the GS1 mod-10 check-digit validation.' },
+      { status: 400 },
+    );
+  }
+
+  const safeCity = sanitizeCity(body.city);
+  const city = safeCity.length >= 2 ? canonicalCityName(safeCity) : 'Madurai';
+
+  const key = `${body.gtin}-${city}-${body.lang}-${body.paymentTerms}-${body.median ?? 'auto'}`;
+  const hit = cache.get(key);
+  if (hit && Date.now() - hit.ts < TTL) {
+    return NextResponse.json({ ...hit.payload, cached: true });
+  }
+
+  // If no median passed, compute one
+  let median = body.median;
+  if (!median) {
+    const product = await lookupGTIN(body.gtin);
+    const beckn = await becknSearch({ gtin: body.gtin, city });
+    const prices = [product.mrp, ...beckn.quotes.map((q) => q.price)].filter((p): p is number => typeof p === 'number' && p > 0);
+    if (prices.length) {
+      const sorted = [...prices].sort((a, b) => a - b);
+      median = sorted[Math.floor(sorted.length / 2)];
+    } else {
+      return NextResponse.json(
+        { error: 'insufficient_price_data', message: 'No price sources available to anchor a negotiation.' },
+        { status: 422 },
+      );
+    }
+  }
+
+  const script = await generateScript(body.gtin, city, body.lang, median, body.paymentTerms);
+  const payload = { median, lang: body.lang, paymentTerms: body.paymentTerms, ...script };
+
+  // bounded cache
+  if (cache.size >= CACHE_MAX) {
+    const oldest = cache.keys().next().value;
+    if (oldest) cache.delete(oldest);
+  }
+  cache.set(key, { ts: Date.now(), payload });
+  return NextResponse.json(payload);
 }
 
 async function generateScript(
@@ -64,6 +105,7 @@ async function generateScript(
   paymentTerms: 'cash' | '15_days' | '30_days'
 ) {
   const product = await lookupGTIN(gtin);
+  const productName = sanitizePromptText(product.name, 120);
   const overpriced = Math.round(fairMedian * 1.13);
 
   // Adjust price target based on payment / credit terms
@@ -82,7 +124,9 @@ async function generateScript(
     en: 'English. Colloquial, sharp Indian wholesale-market bazaar register. Keep each line under 10 words.',
   }[lang];
 
-  const prompt = `Generate a 7-line haggling script for ${product.name} in ${city}.
+  const prompt = `Generate a 7-line haggling script for ${productName} in ${sanitizePromptText(city, 64)}.
+
+${PROMPT_GUARD}
 
 Context:
   - The shopkeeper is buying from a wholesale distributor truck.
@@ -124,7 +168,7 @@ Rules:
     } catch {
       // High quality dynamic fallback tailored to payment terms
       const fallbackLines = [
-        { role: 'supplier', text: `Anna, today ${product.name} is ₹${overpriced}. Fuel cost high.`, lang: 'en' },
+        { role: 'supplier', text: `Anna, today ${productName} is ₹${overpriced}. Fuel cost high.`, lang: 'en' },
         { role: 'shopkeeper', text: paymentTerms === 'cash' ? `Ready UPI cash kudukuren, ₹${finalOffer} final-aa?` : `₹${overpriced} too high. 15-day udhaar-la ₹${finalOffer} tharalama?`, lang: 'ta' },
         { role: 'supplier', text: `₹${finalOffer} not possible! Margin is too low brother.`, lang: 'en' },
         {

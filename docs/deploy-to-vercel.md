@@ -106,9 +106,14 @@ Open the demo URL in Safari on your iPhone:
 
 ## After first deploy
 
-1. **Firestore rules**: `firestore.rules` is configured with schema validation and rate-limit guardrails.
-2. **Custom domain** (optional, $12/yr): Buy `margins.in` or `margins.dev` and point to Vercel.
-3. **MCP discovery**: `https://margins-demo.vercel.app/.well-known/mcp.json` is publicly discoverable.
+1. **Firestore rules**: `firestore.rules` enforces authenticated, owner-scoped ledger writes (Anonymous Auth) and append-only audit telemetry. Enable the **Anonymous** sign-in provider in the Firebase console (Authentication → Sign-in method) so the ledger works.
+2. **Server writes (recommended)**: set `FIREBASE_SERVICE_ACCOUNT_KEY` (raw or base64 JSON service account) as a Vercel env var so orders/audit persist via the Admin SDK — server-side writes otherwise skip with a single log line.
+3. **Rate limits & abuse**: AI endpoints are per-IP rate limited in-app (fair-price 10/min, invoice 6/min, order 6/min, TTS 15/min, MCP 30/min). For hard global caps add Vercel WAF rules.
+4. **MCP access (optional)**: set `MCP_ACCESS_TOKEN` to require `Authorization: Bearer` on `tools/call`; discovery stays open.
+5. **Audit exposure (optional)**: set `ADMIN_TOKEN` to read raw `/api/audit` rows with a bearer token; without it only aggregated stats are returned.
+6. **UPI fair-lock**: the settlement QR uses the distributor's UPI ID collected per-store in the UI (persisted on-device) or the `NEXT_PUBLIC_MERCHANT_UPI_VPA` fallback. No VPA is hardcoded.
+7. **Custom domain** (optional, $12/yr): Buy `margins.in` or `margins.dev` and point to Vercel.
+8. **MCP discovery**: `https://margins-demo.vercel.app/.well-known/mcp.json` is publicly discoverable.
 
 ## One-command deploy from project root
 

@@ -1,37 +1,61 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // Reference product and price catalogs: Public read-only
-    match /products/{gtin} { 
-      allow read: if true; 
-      allow write: if false; 
+
+    // ── Reference product and price caches: public read-only ─────────────
+    match /products/{gtin} {
+      allow read: if true;
+      allow write: if false;
     }
-    match /prices/{city}/{gtin} { 
-      allow read: if true; 
-      allow write: if false; 
+    match /prices/{city}/{gtin} {
+      allow read: if true;
+      allow write: if false;
     }
 
-    // Ledger transactions: Validate required schema on creation
+    // ── Helpers ──────────────────────────────────────────────────────────
+    function isSignedIn() {
+      return request.auth != null;
+    }
+    function owns(data) {
+      return isSignedIn() && data.ownerUid == request.auth.uid;
+    }
+
+    // ── Ledger transactions: PRIVATE, owner-scoped, schema-validated ─────
+    // Anonymous Auth attributes every write; reads and writes are restricted
+    // to the owning identity. The old rules made every shopkeeper's purchase
+    // history world-readable and let anyone forge rows.
     match /transactions/{tx} {
-      allow read: if true;
-      allow create: if request.resource.data.merchantId is string
+      allow read: if owns(resource.data);
+      allow create: if owns(request.resource.data)
+                    && request.resource.data.merchantId is string
                     && request.resource.data.gtin is string
+                    && request.resource.data.product is string
                     && request.resource.data.supplierPrice is number
+                    && request.resource.data.supplierPrice >= 0
+                    && request.resource.data.supplierPrice <= 10000000
                     && request.resource.data.fairPrice is number
-                    && request.resource.data.saved is number;
-      allow update, delete: if request.auth != null;
+                    && request.resource.data.fairPrice >= 0
+                    && request.resource.data.fairPrice <= 10000000
+                    && request.resource.data.saved is number
+                    && request.resource.data.saved >= -100000
+                    && request.resource.data.saved <= 1000000;
+      allow update: if owns(resource.data) && owns(request.resource.data);
+      allow delete: if owns(resource.data);
     }
 
-    // Orders placed via Beckn: Append-only with basic validation
+    // ── Beckn orders: private, owner-attributed, append-only ─────────────
     match /orders/{orderId} {
-      allow read: if true;
-      allow create: if request.resource.data.orderId is string
+      allow read: if owns(resource.data);
+      allow create: if owns(request.resource.data)
+                    && request.resource.data.orderId is string
                     && request.resource.data.gtin is string
-                    && request.resource.data.price is number;
-      allow update, delete: if request.auth != null;
+                    && request.resource.data.price is number
+                    && request.resource.data.price >= 0;
+      allow update, delete: if false;
     }
 
-    // System audit logs: Append-only, immutable
+    // ── Audit telemetry: append-only, non-PII, publicly readable ─────────
+    // Contains only gtin/product/city/verdict/model — no user identity.
     match /audit/{auditId} {
       allow read: if true;
       allow create: if request.resource.data.gtin is string
@@ -39,15 +63,19 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
-    // Merchant isolated tenant documents
-    match /merchants/{m}/ledger/{tx} {
-      allow read: if true;
-      allow write: if request.auth != null || m == "demo-merchant-1";
+    // ── Beckn callback buffer: server-only (Admin SDK bypasses rules) ────
+    match /beckn_callbacks/{id} {
+      allow read, write: if false;
     }
 
+    // ── Merchant subcollections: authenticated access only ───────────────
+    match /merchants/{m}/ledger/{tx} {
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
+    }
     match /merchants/{m}/embeddings/{e} {
-      allow read: if true;
-      allow write: if request.auth != null || m == "demo-merchant-1";
+      allow read: if isSignedIn();
+      allow write: if isSignedIn();
     }
   }
 }

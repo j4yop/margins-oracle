@@ -2,36 +2,68 @@
  * /api/order — Place a real Beckn order end-to-end
  *
  * POST { gtin, city, buyerName, address, lang }
- * → runs select → init → confirm against the BPP
+ * → runs search → select → init → confirm against the BPP
  * → returns the final order object with order id
  *
- * The 90-sec demo closing beat: "Haggle live. Order through ONDC. Logged forever."
+ * Post-audit fixes:
+ *  - GTIN checksum validation; per-IP rate limit
+ *  - confirm carries the *quoted* amount (was "0")
+ *  - bap_uri is derived from the request origin (no more localhost on prod)
+ *  - order persistence goes through the safe write path (admin-first,
+ *    single attempt, no gRPC retry storms, never blocks the response)
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { becknSearch, becknSelect, becknInit, becknConfirm } from '@/lib/beckn';
+import { isValidGTIN } from '@/lib/gtin';
+import { sanitizeCity, sanitizePromptText } from '@/lib/prompt-guard';
+import { canonicalCityName } from '@/lib/cities';
+import { rateLimit, tooManyRequests } from '@/lib/rate-limit';
+import { serverAddDoc } from '@/lib/firestore-write';
 import { z } from 'zod';
-import { collection, addDoc, serverTimestamp } from 'firebase/firestore';
-import { db } from '@/lib/firebase';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
 const InputSchema = z.object({
-  gtin: z.string().min(8),
-  city: z.string(),
-  buyerName: z.string().default('Margins Demo Shopkeeper'),
-  address: z.string().default('Madurai demo address'),
+  gtin: z.string().min(8).max(20),
+  city: z.string().min(2).max(64),
+  buyerName: z.string().min(1).max(80).default('Margins Demo Shopkeeper'),
+  address: z.string().min(1).max(240).default('Madurai demo address'),
   lang: z.enum(['ta', 'hi', 'en']).default('en'),
-  acceptPrice: z.number().optional(),
+  acceptPrice: z.number().min(0).max(1_000_000).optional(),
 });
 
 export async function POST(req: NextRequest) {
-  try {
-    const body = InputSchema.parse(await req.json());
+  const rl = rateLimit(req, 'order', 6);
+  if (!rl.ok) return tooManyRequests(rl);
 
+  let body: z.infer<typeof InputSchema>;
+  try {
+    body = InputSchema.parse(await req.json());
+  } catch (e) {
+    if (e instanceof z.ZodError) {
+      return NextResponse.json({ error: 'invalid_input', details: e.issues }, { status: 400 });
+    }
+    return NextResponse.json({ error: 'invalid_input' }, { status: 400 });
+  }
+
+  if (!isValidGTIN(body.gtin)) {
+    return NextResponse.json(
+      { error: 'invalid_gtin', message: 'Barcode failed the GS1 mod-10 check-digit validation.' },
+      { status: 400 },
+    );
+  }
+
+  const safeCity = sanitizeCity(body.city);
+  const city = sanitizePromptText(safeCity.length >= 2 ? canonicalCityName(safeCity) : 'Madurai', 64);
+  const buyerName = sanitizePromptText(body.buyerName, 80);
+  const address = sanitizePromptText(body.address, 240);
+  const bapUri = requestOrigin(req);
+
+  try {
     // Step 1: search
-    const search = await becknSearch({ gtin: body.gtin, city: body.city });
+    const search = await becknSearch({ gtin: body.gtin, city, bapUri });
     if (search.quotes.length === 0) {
       return NextResponse.json({ error: 'no_suppliers', step: 'search' }, { status: 404 });
     }
@@ -52,7 +84,8 @@ export async function POST(req: NextRequest) {
       txId: chosen.transactionId,
       providerId: chosen.providerId,
       itemId: chosen.itemId,
-      city: body.city,
+      city,
+      bapUri,
     });
 
     // Step 3: init
@@ -60,43 +93,39 @@ export async function POST(req: NextRequest) {
       txId: chosen.transactionId,
       providerId: chosen.providerId,
       itemId: chosen.itemId,
-      city: body.city,
-      buyerName: body.buyerName,
-      address: body.address,
+      city,
+      buyerName,
+      address,
+      bapUri,
     });
 
-    // Step 4: confirm
+    // Step 4: confirm — at the quoted amount
     const conf = await becknConfirm({
       txId: chosen.transactionId,
       providerId: chosen.providerId,
       itemId: chosen.itemId,
-      city: body.city,
-      buyerName: body.buyerName,
-      address: body.address,
+      city,
+      buyerName,
+      address,
+      amount: chosen.price,
+      bapUri,
     });
 
     const finalOrder = conf?.message?.order;
     const orderId = finalOrder?.id ?? `ord-${Date.now()}`;
 
-    // Log to Firestore (fire-and-forget)
-    void (async () => {
-      try {
-        await addDoc(collection(db, 'orders'), {
-          orderId,
-          transactionId: chosen.transactionId,
-          gtin: body.gtin,
-          provider: chosen.provider,
-          price: chosen.price,
-          city: body.city,
-          buyerName: body.buyerName,
-          lang: body.lang,
-          state: finalOrder?.state,
-          timestamp: serverTimestamp(),
-        });
-      } catch {
-        // ignore
-      }
-    })();
+    // Log to Firestore (safe single-attempt write; never blocks the response)
+    void serverAddDoc('orders', {
+      orderId,
+      transactionId: chosen.transactionId,
+      gtin: body.gtin,
+      provider: chosen.provider,
+      price: chosen.price,
+      city,
+      buyerName,
+      lang: body.lang,
+      state: finalOrder?.state,
+    });
 
     return NextResponse.json({
       success: true,
@@ -117,4 +146,10 @@ export async function POST(req: NextRequest) {
   } catch (e) {
     return NextResponse.json({ error: String(e) }, { status: 500 });
   }
+}
+
+function requestOrigin(req: NextRequest): string {
+  const proto = req.headers.get('x-forwarded-proto') ?? 'http';
+  const host = req.headers.get('x-forwarded-host') ?? req.headers.get('host');
+  return host ? `${proto}://${host}` : (process.env.APP_URL ?? '');
 }

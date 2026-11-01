@@ -14,7 +14,7 @@ export async function GET() {
     schema_version: '1.0',
     name: 'margins-mcp',
     display_name: 'MARGINS — fairness oracle for Indian commerce',
-    description: 'Returns fair-price bands for Indian products by GTIN. Backed by GS1 India, Agmarknet, ONDC Beckn live quotes, and Gemini reasoning.',
+    description: 'Returns fair-price bands for Indian products by GTIN. Backed by GS1 India MRP, live wholesale benchmarks, ONDC Beckn quotes, and Gemini reasoning.',
     endpoint: '/api/mcp',
     transport: 'http',
     tools: [
@@ -24,7 +24,7 @@ export async function GET() {
         input_schema: {
           type: 'object',
           properties: {
-            gtin: { type: 'string' },
+            gtin: { type: 'string', description: 'GS1-validated GTIN-8/12/13/14 (EAN/UPC/ITF-14 carton)' },
             city: { type: 'string' },
             quantity: { type: 'number', default: 1 },
           },
@@ -57,8 +57,10 @@ export async function GET() {
         },
       },
     ],
-    authentication: 'none (free tier)',
-    rate_limits: 'fair use — Gemini API free tier',
-    contact: 'hackathon entry — see README',
+    authentication: process.env.MCP_ACCESS_TOKEN
+      ? 'bearer — send Authorization: Bearer <MCP_ACCESS_TOKEN> with tools/call'
+      : 'open (per-IP rate limits; set MCP_ACCESS_TOKEN on the server to require bearer auth)',
+    rate_limits: 'per-IP sliding window — 30 tools/call/min, 60 tools/list/min',
+    contact: 'see repository README',
   });
 }

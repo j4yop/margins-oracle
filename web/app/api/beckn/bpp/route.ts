@@ -2,105 +2,163 @@
  * /api/beckn/bpp — Reference Beckn Provider Platform (BPP)
  *
  * Responds to search/select/init/confirm with canonical Beckn JSON-LD.
- * Simulates multiple suppliers per GTIN with city-aware pricing variation.
+ * Simulates multiple suppliers per city with spread pricing.
+ *
+ * Fixes over the previous revision (all verified live before/after):
+ *  1. ₹43 quote bug: select/init/confirm previously read the GTIN from
+ *     `message.intent.item.descriptor.code` — a field that only exists in
+ *     `search`. Every confirmed order quoted ₹43 (the empty-GTIN fallback).
+ *     GTINs are now extracted from the `message.order.items[*]` shape (with
+ *     intent kept as a search-path fallback).
+ *  2. Quote drift: on_select/on_init/on_confirm now echo the *selected
+ *     supplier's* price (parsed from the provider id), not a flat fair price.
+ *  3. City routing: suppliers are keyed by real STD city codes and the
+ *     context city is normalized via lib/cities, so city-aware pricing
+ *     actually activates.
+ *  4. confirm payment.amount matches the echoed quote (was "0").
+ *  5. No hard-coded per-GTIN price table: base prices derive from the live
+ *     identity layer (cache → prefix) via the documented wholesale model
+ *     (MRP × WHOLESALE_FACTOR), with a deterministic pseudo-MRP for unknown
+ *     GTINs so the simulator stays total.
  */
 
 import { NextRequest, NextResponse } from 'next/server';
 import { lookupGTINSync } from '@/lib/gs1';
+import { toCityCode, cityNameFromCode, CITIES } from '@/lib/cities';
+import { parseGTIN } from '@/lib/gtin';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-// 3 mock suppliers with different pricing
-const SUPPLIERS: Record<string, { name: string; city: string; margin: number }[]> = {
-  default: [
-    { name: 'Madurai Wholesale Co.', city: 'std:0625', margin: 0.0 },     // fair price
-    { name: 'TN Distributors Ltd.', city: 'std:0625', margin: 0.04 },     // +4%
-    { name: 'South India FMCG Hub', city: 'std:0625', margin: -0.02 },   // -2%
+/** Documented wholesale-model parameter (env-tunable, clamped). */
+const WHOLESALE_FACTOR = Math.min(0.99, Math.max(0.5, Number(process.env.WHOLESALE_FACTOR ?? 0.85)));
+
+/** Supplier roster per city code, with margin spreads around the fair price. */
+const SUPPLIERS: Record<string, { name: string; margin: number }[]> = {
+  'std:0452': [ // Madurai
+    { name: 'Madurai Wholesale Co.', margin: 0.0 },
+    { name: 'TN Distributors Ltd.', margin: 0.04 },
+    { name: 'South India FMCG Hub', margin: -0.02 },
   ],
-  Bengaluru: [
-    { name: 'Blr Wholesale Mart', city: 'std:0800', margin: 0.0 },
-    { name: 'Karnataka Distributors', city: 'std:0800', margin: 0.05 },
-    { name: 'KA FMCG Direct', city: 'std:0800', margin: -0.01 },
+  'std:080': [ // Bengaluru
+    { name: 'Blr Wholesale Mart', margin: 0.0 },
+    { name: 'Karnataka Distributors', margin: 0.05 },
+    { name: 'KA FMCG Direct', margin: -0.01 },
   ],
-  Mumbai: [
-    { name: 'Mumbai Wholesale Co.', city: 'std:0820', margin: 0.0 },
-    { name: 'Maharashtra Distributors', city: 'std:0820', margin: 0.03 },
-    { name: 'MH FMCG Hub', city: 'std:0820', margin: -0.02 },
+  'std:022': [ // Mumbai
+    { name: 'Mumbai Wholesale Co.', margin: 0.0 },
+    { name: 'Maharashtra Distributors', margin: 0.03 },
+    { name: 'MH FMCG Hub', margin: -0.02 },
   ],
-  Delhi: [
-    { name: 'Delhi Wholesale Co.', city: 'std:0110', margin: 0.0 },
-    { name: 'NCR Distributors', city: 'std:0110', margin: 0.06 },
-    { name: 'DL FMCG Direct', city: 'std:0110', margin: -0.01 },
+  'std:011': [ // Delhi
+    { name: 'Delhi Wholesale Co.', margin: 0.0 },
+    { name: 'NCR Distributors', margin: 0.06 },
+    { name: 'DL FMCG Direct', margin: -0.01 },
   ],
-  Kolkata: [
-    { name: 'Kolkata Wholesale', city: 'std:0700', margin: 0.0 },
-    { name: 'WB Distributors', city: 'std:0700', margin: 0.04 },
+  'std:033': [ // Kolkata
+    { name: 'Kolkata Wholesale', margin: 0.0 },
+    { name: 'WB Distributors', margin: 0.04 },
   ],
-  Chennai: [
-    { name: 'Chennai Wholesale', city: 'std:0600', margin: 0.0 },
-    { name: 'TN Coastal Distributors', city: 'std:0600', margin: 0.03 },
+  'std:044': [ // Chennai
+    { name: 'Chennai Wholesale', margin: 0.0 },
+    { name: 'TN Coastal Distributors', margin: 0.03 },
   ],
-  Hyderabad: [
-    { name: 'Hyderabad Wholesale', city: 'std:0500', margin: 0.0 },
-    { name: 'TS Distributors', city: 'std:0500', margin: 0.04 },
+  'std:040': [ // Hyderabad
+    { name: 'Hyderabad Wholesale', margin: 0.0 },
+    { name: 'TS Distributors', margin: 0.04 },
   ],
 };
 
-// Fair-price baseline per GTIN (wholesale rate in INR)
-const FAIR_PRICE: Record<string, number> = {
-  '8901058851649': 252,  // Amul Butter 500g (MRP 280)
-  '8901030865278': 95,   // Parle-G 1kg (MRP 110)
-  '8901030383796': 65,   // Parle-G 800g (MRP 75)
-  '8901058851427': 64,   // Amul Taaza Milk 1L (MRP 70)
-  '8901063139466': 29,   // Britannia Bourbon 120g (MRP 35)
-  '8901063012646': 25,   // Britannia Good Day Butter 100g (MRP 30)
-  '8901063027879': 29,   // Britannia Good Day Cashew 100g (MRP 35)
-  '8901063152526': 29,   // Britannia Marie Gold 250g (MRP 35)
-  '8901057011013': 24,   // Tata Salt 1kg (MRP 28)
-  '8901030865728': 24,   // Tata Salt 1kg (MRP 28)
-  '8901057002011': 208,  // Tata Tea 500g (MRP 240)
-  '8901052002542': 12,   // Maggi 70g (MRP 14)
-  '8901052002573': 48,   // Maggi 4-pack (MRP 56)
-  '8901725131238': 212,  // Aashirvaad Atta 5kg (MRP 245)
-  '8906007280014': 126,  // Fortune Sunflower Oil 1L (MRP 145)
-  '8901012111038': 55,   // Colgate Strong Teeth (MRP 65)
-  '8901362001015': 122,  // Dettol 250ml (MRP 142)
-};
+const DEFAULT_CITY_CODE = 'std:0452';
+
+/**
+ * Deterministic pseudo-MRP for GTINs with no identity-layer MRP. A stable
+ * function of the barcode (documented simulator behavior — the reference BPP
+ * is a stand-in network node, and this keeps it total without a price table).
+ */
+function pseudoMrp(gtin: string): number {
+  let h = 0;
+  for (let i = 0; i < gtin.length; i++) h = (h * 31 + gtin.charCodeAt(i)) >>> 0;
+  return 20 + (h % 580); // ₹20–₹599 band
+}
+
+/** Base (fair) wholesale price for a GTIN under the documented model. */
+function basePrice(gtin: string): number {
+  const product = lookupGTINSync(gtin);
+  const mrp = product.mrp ?? pseudoMrp(gtin);
+  return Math.max(1, Math.round(mrp * WHOLESALE_FACTOR));
+}
+
+/** Extract GTIN + provider index from ANY action's payload shape. */
+function extractOrderContext(body: any): { gtin: string; providerIndex: number } {
+  const order = body?.message?.order;
+  const intentCode: string | undefined = body?.message?.intent?.item?.descriptor?.code;
+
+  let gtin: string = '';
+  let providerIndex = 1;
+
+  const item = order?.items?.[0];
+  const itemCode: string | undefined = item?.descriptor?.code ?? item?.code;
+  if (itemCode && /^\d{8,14}$/.test(itemCode)) {
+    gtin = itemCode;
+  } else if (typeof item?.id === 'string') {
+    // item ids are minted as `item-<gtin>-<providerIndex>` at search time
+    const m = item.id.match(/^item-(\d{8,14})-(\d+)$/);
+    if (m) {
+      gtin = m[1];
+      providerIndex = Number(m[2]) || 1;
+    }
+  }
+
+  if (!gtin && intentCode) gtin = intentCode;
+
+  const providerId: string | undefined = order?.provider?.id;
+  if (providerId) {
+    const m = providerId.match(/-(\d+)$/);
+    if (m) providerIndex = Number(m[1]) || providerIndex;
+  }
+
+  return { gtin, providerIndex };
+}
 
 function priceFor(gtin: string, margin: number): number {
-  if (FAIR_PRICE[gtin]) {
-    return Math.round(FAIR_PRICE[gtin] * (1 + margin));
-  }
-  const product = lookupGTINSync(gtin);
-  const base = product.mrp ? Math.round(product.mrp * 0.85) : 30;
-  return Math.round(base * (1 + margin));
+  return Math.max(1, Math.round(basePrice(gtin) * (1 + margin)));
 }
 
 export async function POST(req: NextRequest) {
   const body = await req.json();
   const action: string = body?.context?.action ?? 'unknown';
-  const cityCode: string = body?.context?.city ?? 'std:0625';
-  const gtin: string = body?.message?.intent?.item?.descriptor?.code ?? '';
+  const rawCity: string = body?.context?.city ?? DEFAULT_CITY_CODE;
+  const cityCode = toCityCode(rawCity) ?? DEFAULT_CITY_CODE;
+  const cityName = cityNameFromCode(cityCode);
 
-  // Find the city name from the code (best-effort)
-  const cityName = Object.entries(SUPPLIERS).find(([, list]) => list[0]?.city === cityCode)?.[0] ?? 'default';
-  const suppliers = SUPPLIERS[cityName] ?? SUPPLIERS.default;
+  const suppliers = SUPPLIERS[cityCode] ?? SUPPLIERS[DEFAULT_CITY_CODE];
+  const baseCtx = body.context ?? {};
 
-  const baseCtx = body.context;
+  const { gtin, providerIndex } = extractOrderContext(body);
+  const chosen = suppliers[Math.min(Math.max(providerIndex, 1), suppliers.length) - 1];
 
   if (action === 'search') {
+    const intentGtin: string = body?.message?.intent?.item?.descriptor?.code ?? '';
+    const validGtin = parseGTIN(intentGtin).valid || /^\d{8,14}$/.test(intentGtin);
+    if (!intentGtin || !validGtin) {
+      return NextResponse.json({
+        context: { ...baseCtx, action: 'on_search' },
+        message: { ack: { status: 'NACK' }, error: { type: 'CORE-ERROR', code: '10001', message: 'invalid or missing item descriptor.code' } },
+      }, { status: 400 });
+    }
+
     const catalogs = [
       {
         descriptor: { name: 'MARGINS reference BPP' },
         providers: suppliers.map((s, i) => ({
-          id: `bpp-${cityName.toLowerCase()}-${i + 1}`,
+          id: `bpp-${cityCode.replace('std:', '')}-${i + 1}`,
           descriptor: { name: s.name },
           items: [
             {
-              id: `item-${gtin}-${i + 1}`,
-              descriptor: { name: gtin, code: gtin },
-              price: { currency: 'INR', value: String(priceFor(gtin, s.margin)) },
+              id: `item-${intentGtin}-${i + 1}`,
+              descriptor: { name: intentGtin, code: intentGtin },
+              price: { currency: 'INR', value: String(priceFor(intentGtin, s.margin)) },
               quantity: { available: { count: 50 } },
             },
           ],
@@ -109,14 +167,17 @@ export async function POST(req: NextRequest) {
     ];
     return NextResponse.json({
       context: { ...baseCtx, action: 'on_search' },
-      message: {
-        ack: { status: 'ACK' },
-        catalogs,
-      },
+      message: { ack: { status: 'ACK' }, catalogs },
     });
   }
 
   if (action === 'select') {
+    if (!gtin) {
+      return NextResponse.json({
+        context: { ...baseCtx, action: 'on_select' },
+        message: { ack: { status: 'NACK' }, error: { type: 'CORE-ERROR', code: '10001', message: 'could not resolve GTIN from order items' } },
+      }, { status: 400 });
+    }
     return NextResponse.json({
       context: { ...baseCtx, action: 'on_select' },
       message: {
@@ -124,20 +185,29 @@ export async function POST(req: NextRequest) {
         order: {
           provider: body.message.order.provider,
           items: body.message.order.items,
-          quote: { price: { currency: 'INR', value: String(priceFor(gtin, 0)) } },
+          quote: {
+            price: { currency: 'INR', value: String(priceFor(gtin, chosen.margin)) },
+            breakdown: [{ title: 'item', price: { currency: 'INR', value: String(priceFor(gtin, chosen.margin)) } }],
+          },
         },
       },
     });
   }
 
   if (action === 'init') {
+    if (!gtin) {
+      return NextResponse.json({
+        context: { ...baseCtx, action: 'on_init' },
+        message: { ack: { status: 'NACK' }, error: { type: 'CORE-ERROR', code: '10001', message: 'could not resolve GTIN from order items' } },
+      }, { status: 400 });
+    }
     return NextResponse.json({
       context: { ...baseCtx, action: 'on_init' },
       message: {
         ack: { status: 'ACK' },
         order: {
           ...body.message.order,
-          quote: { price: { currency: 'INR', value: String(priceFor(gtin, 0)) } },
+          quote: { price: { currency: 'INR', value: String(priceFor(gtin, chosen.margin)) } },
           payment: { type: 'ON-FULFILLMENT', status: 'NOT-PAID' },
         },
       },
@@ -145,6 +215,13 @@ export async function POST(req: NextRequest) {
   }
 
   if (action === 'confirm') {
+    if (!gtin) {
+      return NextResponse.json({
+        context: { ...baseCtx, action: 'on_confirm' },
+        message: { ack: { status: 'NACK' }, error: { type: 'CORE-ERROR', code: '10001', message: 'could not resolve GTIN from order items' } },
+      }, { status: 400 });
+    }
+    const quoteValue = String(priceFor(gtin, chosen.margin));
     return NextResponse.json({
       context: { ...baseCtx, action: 'on_confirm' },
       message: {
@@ -154,8 +231,8 @@ export async function POST(req: NextRequest) {
           provider: body.message.order.provider,
           items: body.message.order.items,
           state: 'Created',
-          quote: { price: { currency: 'INR', value: String(priceFor(gtin, 0)) } },
-          payment: { status: 'PAID' },
+          quote: { price: { currency: 'INR', value: quoteValue } },
+          payment: { params: { amount: quoteValue, currency: 'INR' }, status: 'PAID' },
           fulfillment: { tracking: false, state: 'Created' },
         },
       },
@@ -171,9 +248,12 @@ export async function POST(req: NextRequest) {
 export async function GET() {
   return NextResponse.json({
     name: 'MARGINS reference BPP',
-    version: '0.1.0',
+    version: '0.2.0',
     actions: ['search', 'select', 'init', 'confirm'],
-    suppliers: Object.fromEntries(Object.entries(SUPPLIERS).map(([k, v]) => [k, v.length])),
-    fairPrices: FAIR_PRICE,
+    cities: CITIES.filter((c) => SUPPLIERS[c.code]).map((c) => ({ name: c.name, code: c.code, suppliers: SUPPLIERS[c.code].length })),
+    pricing_model: {
+      base: 'identity-layer MRP × WHOLESALE_FACTOR (deterministic pseudo-MRP for unknown GTINs)',
+      wholesale_factor: WHOLESALE_FACTOR,
+    },
   });
 }

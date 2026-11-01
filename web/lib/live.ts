@@ -1,20 +1,21 @@
 /**
- * Gemini Live API client — bidi voice for the haggling scene.
+ * lib/live.ts — Gemini Live API utilities for the haggling scene
  *
- * Uses the Live API WebSocket endpoint. The full setup requires the
- * official @google/generative-ai SDK with the live connection helpers
- * (or a direct WebSocket). For real-time streaming we use the SDK's
- * `live.connect()` pattern.
+ * SECURITY CHANGE (audit finding #6): the previous revision read
+ * `process.env.NEXT_PUBLIC_GEMINI_API_KEY` — any value under that name is
+ * bundled into shipped client JavaScript, i.e. a public API key. That path
+ * has been removed. Browser-direct Live sessions are therefore DISABLED by
+ * design until a server-brokered token flow exists (Gemini's public API has
+ * no short-lived client token for the Live WebSocket).
  *
- * The Live API model for free preview is `gemini-2.0-flash-live-001`
- * or `gemini-2.0-flash-exp`. Voice: Aoede (default), Kore, Leda, etc.
+ * What still works today:
+ *  - Voice for the haggling scene is synthesized server-side via /api/tts
+ *    (key stays on the server) — see web/app/haggle/page.tsx.
  *
- * Free tier: ~5 minutes per session in preview.
+ * What remains here: pure browser-audio utilities (PCM playback queue and
+ * 16 kHz microphone capture) that any future server-brokered streaming
+ * client will need.
  */
-
-import { GoogleGenerativeAI } from '@google/generative-ai';
-
-const Modality: { AUDIO: 'AUDIO'; TEXT: 'TEXT' } = { AUDIO: 'AUDIO', TEXT: 'TEXT' };
 
 export type LiveCallbacks = {
   onAudio?: (pcm: ArrayBuffer) => void;
@@ -24,89 +25,23 @@ export type LiveCallbacks = {
   onClose?: () => void;
 };
 
-const LIVE_MODEL = process.env.GEMINI_MODEL_LIVE ?? 'gemini-2.0-flash-live-001';
-
-const HAGGLING_SYSTEM_PROMPT = `You are MARGINS, an AI co-pilot for Indian shopkeepers. The user is a Madurai kirana owner haggling with a wholesale supplier over a phone call. The supplier just quoted an unfair price. The user is speaking in Tamil or Hindi.
-
-Your job:
-- Listen to what the supplier says (via the user's relay).
-- Whisper back to the user in their language, briefly, with the right counter-offer and a sharp one-liner to use.
-- Keep replies under 8 seconds of speech. Be direct, colloquial, and a little aggressive (in a Tamil-mama way).
-- Always end by saying what to do next: "say X" or "walk away" or "settle at ₹Y".
-
-Never break character. Never speak English unless asked. Never explain your reasoning out loud — just the line.`;
-
 /**
- * Start a Live API session. Returns a handle with .send() and .close().
- *
- * Browser usage:
- *   const live = await startLiveSession({ onAudio, onText });
- *   // stream mic PCM at 16kHz to live.sendAudio()
- *   live.close();
+ * Disabled intentionally. Attempting to start a browser-direct Live session
+ * throws with migration guidance instead of silently requiring a public key.
  */
-export async function startLiveSession(voice: string, callbacks: LiveCallbacks) {
-  const apiKey = process.env.NEXT_PUBLIC_GEMINI_API_KEY;
-  if (!apiKey) {
-    callbacks.onError?.(new Error('GEMINI_API_KEY not configured'));
-    return { sendAudio: () => {}, sendText: () => {}, close: () => {} };
-  }
-
-  const genai = new GoogleGenerativeAI(apiKey);
-  const session = await genai.live.connect({
-    model: LIVE_MODEL,
-    callbacks: {
-      onopen: () => console.log('[live] connected'),
-      onmessage: (msg: any) => {
-        if (msg.serverContent?.modelTurn?.parts) {
-          for (const part of msg.serverContent.modelTurn.parts) {
-            if (part.inlineData?.data) {
-              // base64 PCM
-              const bin = atob(part.inlineData.data);
-              const buf = new ArrayBuffer(bin.length);
-              const view = new Uint8Array(buf);
-              for (let i = 0; i < bin.length; i++) view[i] = bin.charCodeAt(i);
-              callbacks.onAudio?.(buf);
-            }
-            if (part.text) {
-              const finished = !!msg.serverContent?.turnComplete;
-              callbacks.onText?.(part.text, finished);
-            }
-          }
-        }
-        if (msg.serverContent?.turnComplete) {
-          callbacks.onTurnComplete?.();
-        }
-      },
-      onerror: (e: any) => callbacks.onError?.(new Error(String(e?.message ?? e))),
-      onclose: () => callbacks.onClose?.(),
-    },
-    config: {
-      responseModalities: [Modality.AUDIO],
-      speechConfig: {
-        voiceConfig: { prebuiltVoiceConfig: { voiceName: voice } },
-      },
-      systemInstruction: { parts: [{ text: HAGGLING_SYSTEM_PROMPT }] },
-    },
-  });
-
-  return {
-    sendAudio: (pcm: ArrayBuffer) => session.sendRealtimeInput({ audio: { data: arrayBufferToBase64(pcm), mimeType: 'audio/pcm;rate=16000' } }),
-    sendText: (text: string) => session.sendClientContent({ turns: [{ role: 'user', parts: [{ text }] }], turnComplete: true }),
-    close: () => session.close(),
-  };
+export async function startLiveSession(_voice: string, callbacks: LiveCallbacks) {
+  const err = new Error(
+    '[margins] Browser-direct Gemini Live sessions are disabled for key safety. ' +
+    'Voice is served server-side via /api/tts; wire a server-brokered Live token flow before re-enabling.',
+  );
+  callbacks.onError?.(err);
+  throw err;
 }
 
-function arrayBufferToBase64(buf: ArrayBuffer): string {
-  const bytes = new Uint8Array(buf);
-  let s = '';
-  for (let i = 0; i < bytes.byteLength; i++) s += String.fromCharCode(bytes[i]);
-  return btoa(s);
-}
-
-/** Play raw PCM 16kHz mono audio via Web Audio API. */
-export function pcmPlayer() {
+/** Play raw PCM (16-bit LE mono) at `rate` Hz via Web Audio API. */
+export function pcmPlayer(rate = 24000) {
   const Ctor = (window as any).AudioContext || (window as any).webkitAudioContext;
-  const ctx = new Ctor({ sampleRate: 24000 }); // Live API emits 24kHz
+  const ctx = new Ctor({ sampleRate: rate });
   const queue: ArrayBuffer[] = [];
   let playing = false;
 
@@ -118,7 +53,7 @@ export function pcmPlayer() {
       const f32 = new Float32Array(buf.byteLength / 2);
       const view = new DataView(buf);
       for (let i = 0; i < f32.length; i++) f32[i] = view.getInt16(i * 2, true) / 32768;
-      const audio = ctx.createBuffer(1, f32.length, 24000);
+      const audio = ctx.createBuffer(1, f32.length, rate);
       audio.getChannelData(0).set(f32);
       const src = ctx.createBufferSource();
       src.buffer = audio;
@@ -134,7 +69,7 @@ export function pcmPlayer() {
   };
 }
 
-/** Capture mic at 16kHz mono PCM. */
+/** Capture mic at 16kHz mono PCM. Returns a stop() teardown. */
 export async function micCapture(onFrame: (pcm: ArrayBuffer) => void): Promise<() => void> {
   const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, sampleRate: 16000 } });
   const Ctor = (window as any).AudioContext || (window as any).webkitAudioContext;

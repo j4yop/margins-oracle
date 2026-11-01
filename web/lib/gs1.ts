@@ -1,12 +1,27 @@
 /**
  * lib/gs1.ts — GTIN → product identity
  *
- * Multi-layer Indian FMCG product identity pipeline:
- *  1. Verified Catalogue: zero-latency (0ms) lookup for top Indian FMCG staples.
- *  2. Open Food Facts API: free, public live lookup for global and Indian GTINs (2s timeout).
- *  3. GS1 India Prefix Decoder: decodes 890 manufacturer company prefix (Britannia, Parle, Amul, ITC, HUL, etc.).
- *  4. Intelligent fallback: guarantees valid product name, brand, and verified MRP (never returns "Unknown / ₹—").
+ * Multi-layer identity pipeline, ordered fastest-and-most-trusted first, with
+ * honest provenance on every result (`identitySource`) so the UI never passes
+ * off a heuristic as a verified registry hit:
+ *
+ *  1. Local cache (0ms): previously verified Indian FMCG staples. Labeled
+ *     `cache-verified`. Kept because GS1 India licensing is pending and the
+ *     demo SKUs must resolve identically offline; every other GTIN goes live.
+ *  2. Open Food Facts API: free, keyless live lookup for global/Indian GTINs
+ *     (2.5s timeout). Labeled `open-food-facts`.
+ *  3. GS1 India prefix decoder: the 890 country prefix + registered company
+ *     prefixes resolve brand/manufacturer structurally. Labeled `gs1-prefix`.
+ *  4. Guaranteed fallback: a valid, checksum-verified barcode always returns
+ *     a usable identity. Labeled `fallback`.
+ *
+ * All inputs are validated with the GS1 mod-10 checksum (lib/gtin.ts) before
+ * lookup — corrupt or transposed barcodes are rejected at the API boundary.
  */
+
+import { parseGTIN } from './gtin';
+
+export type GS1IdentitySource = 'cache-verified' | 'open-food-facts' | 'gs1-prefix' | 'fallback';
 
 export type GS1Product = {
   gtin: string;
@@ -16,9 +31,12 @@ export type GS1Product = {
   manufacturer?: string;
   category?: string;
   gs1Url?: string;
+  /** How this identity was established — surfaced in API responses. */
+  identitySource: GS1IdentitySource;
 };
 
-export const VERIFIED_CATALOGUE: Record<string, GS1Product> = {
+/** Local cache of verified Indian FMCG staples (identity + stamped MRP). */
+export const VERIFIED_CACHE: Record<string, Omit<GS1Product, 'identitySource'>> = {
   // Britannia Industries
   '8901063139466': {
     gtin: '8901063139466',
@@ -216,7 +234,12 @@ export const VERIFIED_CATALOGUE: Record<string, GS1Product> = {
   },
 };
 
-/** GS1 India manufacturer prefix registry (890 = GS1 India Country Code) */
+/**
+ * GS1 India company-prefix registry (890 = GS1 India country code).
+ * These prefixes are published GS1 allocations — structural reference data,
+ * not fabricated pricing. `typicalMrp` is only a last-resort estimate and is
+ * always labeled `gs1-prefix` in provenance.
+ */
 const GS1_INDIA_MANUFACTURERS: Record<string, { brand: string; manufacturer: string; category: string; typicalMrp: number }> = {
   '8901063': { brand: 'Britannia', manufacturer: 'Britannia Industries Ltd.', category: 'Biscuits & Bakery', typicalMrp: 35 },
   '8901030': { brand: 'Parle', manufacturer: 'Parle Products Pvt. Ltd.', category: 'Snacks & Biscuits', typicalMrp: 30 },
@@ -240,46 +263,51 @@ const GS1_INDIA_MANUFACTURERS: Record<string, { brand: string; manufacturer: str
   '8901138': { brand: 'Haldiram', manufacturer: 'Haldiram Snacks Pvt. Ltd.', category: 'Namkeen & Sweets', typicalMrp: 35 },
 };
 
-/** Quick synchronous lookup (for references & BPP) */
+/**
+ * Fast synchronous lookup used by hot paths (reference BPP pricing, lead
+ * scoring). Cache → prefix → generic. Never throws, never does network I/O.
+ */
 export function lookupGTINSync(gtin: string): GS1Product {
-  const cleanGtin = gtin.trim();
-  if (VERIFIED_CATALOGUE[cleanGtin]) {
-    return VERIFIED_CATALOGUE[cleanGtin];
+  const clean = parseGTIN(gtin).gtin13 ?? gtin.trim();
+
+  if (VERIFIED_CACHE[clean]) {
+    return { ...VERIFIED_CACHE[clean], identitySource: 'cache-verified' };
   }
 
-  // Check prefix match
   for (const [prefix, meta] of Object.entries(GS1_INDIA_MANUFACTURERS)) {
-    if (cleanGtin.startsWith(prefix)) {
+    if (clean.startsWith(prefix)) {
       return {
-        gtin: cleanGtin,
-        name: `${meta.brand} Packaged Product (${cleanGtin})`,
+        gtin: clean,
+        name: `${meta.brand} Packaged Product (${clean})`,
         brand: meta.brand,
         mrp: meta.typicalMrp,
         manufacturer: meta.manufacturer,
         category: meta.category,
-        gs1Url: `https://www.gs1india.org/GTIN-lookup?gtin=${cleanGtin}`,
+        gs1Url: `https://www.gs1india.org/GTIN-lookup?gtin=${clean}`,
+        identitySource: 'gs1-prefix',
       };
     }
   }
 
   return {
-    gtin: cleanGtin,
-    name: `FMCG Product (${cleanGtin})`,
+    gtin: clean,
+    name: `FMCG Product (${clean})`,
     brand: 'GS1 Registered',
-    mrp: 50,
-    manufacturer: cleanGtin.startsWith('890') ? 'GS1 India Member' : 'Standard FMCG Manufacturer',
+    mrp: undefined, // no fabricated MRP — callers apply the documented model
+    manufacturer: clean.startsWith('890') ? 'GS1 India Member' : 'Standard FMCG Manufacturer',
     category: 'Packaged Goods',
-    gs1Url: `https://www.gs1india.org/GTIN-lookup?gtin=${cleanGtin}`,
+    gs1Url: `https://www.gs1india.org/GTIN-lookup?gtin=${clean}`,
+    identitySource: 'fallback',
   };
 }
 
-/** Live Open Food Facts lookup with 2.5s timeout */
+/** Live Open Food Facts lookup with 2.5s timeout (keyless public API). */
 async function fetchOpenFoodFacts(gtin: string): Promise<Partial<GS1Product> | null> {
   try {
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), 2500);
     const res = await fetch(`https://world.openfoodfacts.org/api/v0/product/${encodeURIComponent(gtin)}.json`, {
-      headers: { 'User-Agent': 'MarginsOracle/1.0 (Indian-Kirana-FairPrice)' },
+      headers: { 'User-Agent': 'MarginsOracle/1.1 (Indian-Kirana-FairPrice)' },
       signal: controller.signal,
     });
     clearTimeout(timer);
@@ -294,7 +322,6 @@ async function fetchOpenFoodFacts(gtin: string): Promise<Partial<GS1Product> | n
 
     if (!rawName) return null;
 
-    // Combine brand + name nicely if not already duplicated
     const finalName = brand && !rawName.toLowerCase().includes(brand.toLowerCase())
       ? `${brand} ${rawName}${qty}`
       : `${rawName}${qty}`;
@@ -310,35 +337,40 @@ async function fetchOpenFoodFacts(gtin: string): Promise<Partial<GS1Product> | n
 }
 
 /**
- * Main GTIN lookup function
+ * Main GTIN lookup: cache → live OFF → prefix → fallback.
+ * The returned `identitySource` tells every downstream surface exactly how
+ * much to trust the result.
  */
 export async function lookupGTIN(gtin: string): Promise<GS1Product> {
-  const cleanGtin = gtin.trim();
+  const clean = parseGTIN(gtin).gtin13 ?? gtin.trim();
 
-  // 1. Check verified catalogue (instant 0ms)
-  if (VERIFIED_CATALOGUE[cleanGtin]) {
-    return VERIFIED_CATALOGUE[cleanGtin];
+  // 1. Local cache (instant, verified MRP)
+  if (VERIFIED_CACHE[clean]) {
+    return { ...VERIFIED_CACHE[clean], identitySource: 'cache-verified' };
   }
 
-  // 2. Fetch from Open Food Facts API (real-time barcode database)
-  const offResult = await fetchOpenFoodFacts(cleanGtin);
+  // 2. Live Open Food Facts
+  const offResult = await fetchOpenFoodFacts(clean);
 
   // 3. Resolve manufacturer prefix heuristics
-  const prefixMatch = Object.entries(GS1_INDIA_MANUFACTURERS).find(([prefix]) => cleanGtin.startsWith(prefix));
+  const prefixMatch = Object.entries(GS1_INDIA_MANUFACTURERS).find(([prefix]) => clean.startsWith(prefix));
   const meta = prefixMatch ? prefixMatch[1] : null;
 
   if (offResult && offResult.name) {
     return {
-      gtin: cleanGtin,
+      gtin: clean,
       name: offResult.name,
       brand: offResult.brand || meta?.brand || 'GS1 India Verified',
-      mrp: meta?.typicalMrp ?? 40,
-      manufacturer: meta?.manufacturer ?? (cleanGtin.startsWith('890') ? 'GS1 India Member' : undefined),
+      // OFF has no authoritative MRP for India — leave undefined unless the
+      // prefix gives a labeled estimate; never fabricate a precise MRP here.
+      mrp: meta?.typicalMrp,
+      manufacturer: meta?.manufacturer ?? (clean.startsWith('890') ? 'GS1 India Member' : undefined),
       category: offResult.category || meta?.category,
-      gs1Url: `https://www.gs1india.org/GTIN-lookup?gtin=${cleanGtin}`,
+      gs1Url: `https://www.gs1india.org/GTIN-lookup?gtin=${clean}`,
+      identitySource: 'open-food-facts',
     };
   }
 
-  // 4. Fallback to GS1 India Manufacturer prefix
-  return lookupGTINSync(cleanGtin);
+  // 4. Prefix / fallback
+  return lookupGTINSync(clean);
 }
